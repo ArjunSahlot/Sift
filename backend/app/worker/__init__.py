@@ -1,0 +1,1 @@
+"""Sift worker process."""
