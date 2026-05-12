@@ -25,6 +25,8 @@ export type VideoItem = {
   goodClips?: number;
   reviewClips?: number;
   rejectedClips?: number;
+  processingTimeSeconds?: number;
+  mostCommonRejectionReason?: string;
   createdAt: string;
   error?: string;
 };

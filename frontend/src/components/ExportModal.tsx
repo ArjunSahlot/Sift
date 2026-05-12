@@ -2,13 +2,36 @@
 
 import { Download, Loader2, Package, X } from "lucide-react";
 import { useState } from "react";
+import type { ExportResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+export type ExportSettings = {
+  include: {
+    includeClips: boolean;
+    includeThumbnails: boolean;
+    includeManifest: boolean;
+    includeSummary: boolean;
+  };
+  quality: {
+    good: boolean;
+    review: boolean;
+    rejected: boolean;
+  };
+  metadata: {
+    transcript: boolean;
+    scores: boolean;
+    tags: boolean;
+    source: boolean;
+    rejectionReasons: boolean;
+  };
+};
 
 type ExportModalProps = {
   open: boolean;
   onClose: () => void;
   mode: "query" | "video";
   resultCount?: number;
+  onGenerate: (settings: ExportSettings) => Promise<ExportResponse>;
 };
 
 type ExportStage = "settings" | "preparing" | "complete";
@@ -34,8 +57,16 @@ const metadataOptions = [
   ["rejectionReasons", "Rejection reasons"],
 ] as const;
 
-export function ExportModal({ open, onClose, mode, resultCount = 0 }: ExportModalProps) {
+export function ExportModal({
+  open,
+  onClose,
+  mode,
+  resultCount = 0,
+  onGenerate,
+}: ExportModalProps) {
   const [stage, setStage] = useState<ExportStage>("settings");
+  const [downloadUrl, setDownloadUrl] = useState<string>();
+  const [error, setError] = useState("");
   const [include, setInclude] = useState({
     includeClips: true,
     includeThumbnails: true,
@@ -61,6 +92,8 @@ export function ExportModal({ open, onClose, mode, resultCount = 0 }: ExportModa
 
   function resetModal() {
     setStage("settings");
+    setDownloadUrl(undefined);
+    setError("");
     setQuality({ good: true, review: mode === "query", rejected: false });
   }
 
@@ -69,9 +102,22 @@ export function ExportModal({ open, onClose, mode, resultCount = 0 }: ExportModa
     onClose();
   }
 
-  function generateExport() {
+  async function generateExport() {
     setStage("preparing");
-    window.setTimeout(() => setStage("complete"), 1100);
+    setError("");
+
+    try {
+      const response = await onGenerate({ include, quality, metadata });
+      setDownloadUrl(response.downloadUrl);
+      setStage("complete");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Export failed. Try again shortly.",
+      );
+      setStage("settings");
+    }
   }
 
   return (
@@ -124,6 +170,11 @@ export function ExportModal({ open, onClose, mode, resultCount = 0 }: ExportModa
                 values={metadata}
                 onChange={(key, value) => setMetadata({ ...metadata, [key]: value })}
               />
+              {error ? (
+                <p className="rounded-md border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
+                  {error}
+                </p>
+              ) : null}
             </>
           ) : (
             <div className="grid min-h-56 place-items-center text-center">
@@ -165,13 +216,16 @@ export function ExportModal({ open, onClose, mode, resultCount = 0 }: ExportModa
               Generate Export
             </button>
           ) : stage === "complete" ? (
-            <button
-              type="button"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-200 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-100"
+            <a
+              href={downloadUrl}
+              className={cn(
+                "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-200 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-100",
+                !downloadUrl && "pointer-events-none opacity-60",
+              )}
             >
               <Download className="h-4 w-4" />
               Download ZIP
-            </button>
+            </a>
           ) : null}
         </footer>
       </section>

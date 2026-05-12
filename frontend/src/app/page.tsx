@@ -8,11 +8,11 @@ import {
   Sparkles,
   UploadCloud,
 } from "lucide-react";
-import { useMemo, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipCard } from "@/components/ClipCard";
 import { EmptyState } from "@/components/EmptyState";
-import { ExportModal } from "@/components/ExportModal";
+import { ExportModal, type ExportSettings } from "@/components/ExportModal";
 import { FilterBar } from "@/components/FilterBar";
 import { LoadingState } from "@/components/LoadingState";
 import { ModeToggle } from "@/components/ModeToggle";
@@ -23,46 +23,107 @@ import {
 } from "@/components/UploadDropzone";
 import { VideoCard } from "@/components/VideoCard";
 import { YouTubeInput } from "@/components/YouTubeInput";
-import { defaultFilters, mockClips, mockVideos } from "@/lib/mock-data";
-import type { ClipItem, Mode, QueryFilters, VideoItem } from "@/lib/types";
-import { cn, filterClips, formatDuration } from "@/lib/utils";
+import { createExport, getPublicVideos, searchClips, uploadVideo } from "@/lib/api";
+import type { ClipItem, ClipQuality, Mode, QueryFilters, VideoItem } from "@/lib/types";
+import { cn, formatDuration } from "@/lib/utils";
 
 const processingStages = [
   "detecting_speech",
   "extracting_clips",
+  "generating_thumbnails",
   "running_face_detection",
   "scoring_quality",
-  "generating_thumbnails",
 ];
 
 const initialFilters: QueryFilters = {
-  ...defaultFilters,
   quality: "good",
   type: "speaking",
+  duration: "any",
+  faceVisible: false,
+  audioClean: false,
+  hasTranscript: false,
+  exportableOnly: false,
 };
 
 export default function Home() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("upload");
-  const [videos, setVideos] = useState<VideoItem[]>(mockVideos);
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [loadingVideos, setLoadingVideos] = useState(true);
+  const [apiError, setApiError] = useState("");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadError, setUploadError] = useState("");
   const [youtubeNotice, setYoutubeNotice] = useState("");
   const [query, setQuery] = useState("whiteboard");
   const [filters, setFilters] = useState<QueryFilters>(initialFilters);
-  const [results, setResults] = useState<ClipItem[]>(
-    filterClips(mockClips, "whiteboard", initialFilters),
-  );
+  const [results, setResults] = useState<ClipItem[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
+  const refreshVideos = useCallback(async () => {
+    try {
+      const nextVideos = await getPublicVideos();
+      setVideos(nextVideos);
+      setApiError("");
+    } catch (error) {
+      setApiError(
+        error instanceof Error
+          ? error.message
+          : "Could not load videos from the Sift API.",
+      );
+    } finally {
+      setLoadingVideos(false);
+    }
+  }, []);
+
+  const runSearch = useCallback(
+    async (nextQuery = query, nextFilters = filters) => {
+      setSearching(true);
+      try {
+        const clips = await searchClips({ query: nextQuery, filters: nextFilters });
+        setResults(clips);
+        setHasSearched(true);
+        setApiError("");
+      } catch (error) {
+        setResults([]);
+        setApiError(
+          error instanceof Error
+            ? error.message
+            : "Could not search clips from the Sift API.",
+        );
+      } finally {
+        setSearching(false);
+      }
+    },
+    [filters, query],
+  );
+
   useEffect(() => {
+    void refreshVideos();
+  }, [refreshVideos]);
+
+  useEffect(() => {
+    const hasActiveJobs = videos.some((video) =>
+      ["queued", "uploading", "processing"].includes(video.status),
+    );
+
+    if (!hasActiveJobs && uploadState !== "uploading") {
+      return;
+    }
+
     const timer = window.setInterval(() => {
-      setVideos((currentVideos) => currentVideos.map(advanceProcessingVideo));
+      void refreshVideos();
     }, 2000);
 
     return () => window.clearInterval(timer);
-  }, []);
+  }, [refreshVideos, uploadState, videos]);
+
+  useEffect(() => {
+    if (mode === "query" && !hasSearched) {
+      void runSearch();
+    }
+  }, [hasSearched, mode, runSearch]);
 
   const publicStats = useMemo(() => {
     const completeVideos = videos.filter((video) => video.status === "complete");
@@ -80,16 +141,16 @@ export default function Home() {
     };
   }, [videos]);
 
-  function handleFileSelected(file: File) {
-    const id = `video_upload_${Date.now()}`;
+  async function handleFileSelected(file: File) {
+    const optimisticId = `optimistic_${Date.now()}`;
     const optimisticVideo: VideoItem = {
-      id,
+      id: optimisticId,
       title: file.name.replace(/\.[^/.]+$/, "") || "Uploaded Video",
       filename: file.name,
       sourceType: "upload",
       status: "uploading",
       progressStage: "uploading",
-      progressPercent: 8,
+      progressPercent: 5,
       videoUrl: URL.createObjectURL(file),
       durationSeconds: 0,
       fileSizeMb: file.size / 1024 / 1024,
@@ -103,29 +164,55 @@ export default function Home() {
     setUploadError("");
     setUploadState("uploading");
     setVideos((currentVideos) => [optimisticVideo, ...currentVideos]);
-    window.setTimeout(() => setUploadState("complete"), 1300);
+
+    try {
+      await uploadVideo(file, optimisticVideo.title);
+      setUploadState("complete");
+      await refreshVideos();
+      window.setTimeout(() => setUploadState("idle"), 1800);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Upload failed. Try another file.";
+      setUploadError(message);
+      setUploadState("failed");
+      setVideos((currentVideos) =>
+        currentVideos.map((video) =>
+          video.id === optimisticId
+            ? { ...video, status: "failed", error: message, progressPercent: 100 }
+            : video,
+        ),
+      );
+    }
   }
 
   function handleYouTubeSubmit(url: string) {
     setYoutubeNotice(
-      `YouTube ingestion is ready for backend wiring. Captured URL: ${url}`,
+      `YouTube ingestion is still backend-stubbed for this MVP. Captured URL: ${url}`,
     );
   }
 
-  function handleSearch() {
-    setSearching(true);
-    window.setTimeout(() => {
-      setResults(filterClips(mockClips, query, filters));
-      setSearching(false);
-    }, 450);
-  }
-
   function handleVideoClick(video: VideoItem) {
-    if (video.status === "failed") {
+    if (video.status === "failed" || video.id.startsWith("optimistic_")) {
       return;
     }
 
     router.push(`/videos/${video.id}`);
+  }
+
+  async function handleQueryExport(settings: ExportSettings) {
+    return createExport({
+      mode: "query",
+      query,
+      filters: {
+        ...filters,
+        quality: selectedQuality(settings.quality) ?? filters.quality,
+      },
+      ...settings.include,
+      includeTranscripts: settings.metadata.transcript,
+      includeQualityScores: settings.metadata.scores,
+      includeTags: settings.metadata.tags,
+      includeRejectionReasons: settings.metadata.rejectionReasons,
+    });
   }
 
   return (
@@ -147,6 +234,12 @@ export default function Home() {
           <ModeToggle mode={mode} onModeChange={setMode} />
         </header>
 
+        {apiError ? (
+          <p className="mt-6 rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
+            {apiError}
+          </p>
+        ) : null}
+
         <section className="grid gap-3 py-6 md:grid-cols-4">
           <Stat
             icon={FileVideo}
@@ -165,7 +258,7 @@ export default function Home() {
           />
           <Stat
             icon={UploadCloud}
-            label="Accepted duration"
+            label="Video duration"
             value={formatDuration(publicStats.duration)}
           />
         </section>
@@ -173,6 +266,7 @@ export default function Home() {
         {mode === "upload" ? (
           <UploadMode
             videos={videos}
+            loadingVideos={loadingVideos}
             uploadState={uploadState}
             uploadError={uploadError}
             youtubeNotice={youtubeNotice}
@@ -185,10 +279,11 @@ export default function Home() {
             query={query}
             filters={filters}
             results={results}
+            hasSearched={hasSearched}
             searching={searching}
             onQueryChange={setQuery}
             onFiltersChange={setFilters}
-            onSearch={handleSearch}
+            onSearch={(nextQuery) => void runSearch(nextQuery)}
             onOpenExport={() => setExportOpen(true)}
           />
         )}
@@ -199,6 +294,7 @@ export default function Home() {
         onClose={() => setExportOpen(false)}
         mode="query"
         resultCount={results.length}
+        onGenerate={handleQueryExport}
       />
     </main>
   );
@@ -206,6 +302,7 @@ export default function Home() {
 
 function UploadMode({
   videos,
+  loadingVideos,
   uploadState,
   uploadError,
   youtubeNotice,
@@ -214,6 +311,7 @@ function UploadMode({
   onVideoClick,
 }: {
   videos: VideoItem[];
+  loadingVideos: boolean;
   uploadState: UploadState;
   uploadError: string;
   youtubeNotice: string;
@@ -272,15 +370,26 @@ function UploadMode({
             </p>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {videos.map((video) => (
-            <VideoCard
-              key={video.id}
-              video={video}
-              onClick={video.status === "failed" ? undefined : () => onVideoClick(video)}
-            />
-          ))}
-        </div>
+        {loadingVideos ? (
+          <LoadingState label="Loading public videos..." />
+        ) : videos.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {videos.map((video) => (
+              <VideoCard
+                key={video.id}
+                video={video}
+                onClick={
+                  video.status === "failed" ? undefined : () => onVideoClick(video)
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No public videos yet."
+            description="Add example videos through the backend script or upload a short demo video to start the shared dataset."
+          />
+        )}
       </section>
     </div>
   );
@@ -290,6 +399,7 @@ function QueryMode({
   query,
   filters,
   results,
+  hasSearched,
   searching,
   onQueryChange,
   onFiltersChange,
@@ -299,10 +409,11 @@ function QueryMode({
   query: string;
   filters: QueryFilters;
   results: ClipItem[];
+  hasSearched: boolean;
   searching: boolean;
   onQueryChange: (query: string) => void;
   onFiltersChange: (filters: QueryFilters) => void;
-  onSearch: () => void;
+  onSearch: (query?: string) => void;
   onOpenExport: () => void;
 }) {
   return (
@@ -331,16 +442,19 @@ function QueryMode({
         <SearchBar
           value={query}
           onChange={onQueryChange}
-          onSearch={onSearch}
+          onSearch={() => onSearch()}
           loading={searching}
         />
         <div className="mt-3 flex flex-wrap gap-2">
-          {["person explaining code", "startup pitch", "good lighting", "office interview"].map(
+          {["whiteboard", "startup pitch", "clean audio", "office interview"].map(
             (example) => (
               <button
                 key={example}
                 type="button"
-                onClick={() => onQueryChange(example)}
+                onClick={() => {
+                  onQueryChange(example);
+                  onSearch(example);
+                }}
                 className="rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-cyan-300/30 hover:text-cyan-100"
               >
                 {example}
@@ -367,8 +481,12 @@ function QueryMode({
           </div>
         ) : (
           <EmptyState
-            title="No clips found."
-            description="Try a broader query or remove filters."
+            title={hasSearched ? "No clips found." : "Search the public clip dataset."}
+            description={
+              hasSearched
+                ? "Try a broader query or remove filters."
+                : "Run a query to find training-ready human-speaking clips."
+            }
           />
         )}
       </section>
@@ -402,44 +520,14 @@ function Stat({
   );
 }
 
-function advanceProcessingVideo(video: VideoItem): VideoItem {
-  if (!["queued", "uploading", "processing"].includes(video.status)) {
-    return video;
+function selectedQuality(quality: ExportSettings["quality"]): ClipQuality | "any" | undefined {
+  const selected = Object.entries(quality)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key as ClipQuality);
+
+  if (selected.length === 0) {
+    return "any";
   }
 
-  const currentProgress = video.progressPercent ?? 0;
-  const nextProgress = Math.min(
-    100,
-    currentProgress + (video.status === "uploading" ? 18 : 9),
-  );
-
-  if (nextProgress >= 100) {
-    return {
-      ...video,
-      status: "complete",
-      progressStage: "complete",
-      progressPercent: 100,
-      durationSeconds: video.durationSeconds || 166,
-      clipsFound: Math.max(video.clipsFound ?? 0, 18),
-      goodClips: Math.max(video.goodClips ?? 0, 11),
-      reviewClips: Math.max(video.reviewClips ?? 0, 4),
-      rejectedClips: Math.max(video.rejectedClips ?? 0, 3),
-    };
-  }
-
-  const stageIndex = Math.min(
-    processingStages.length - 1,
-    Math.floor((nextProgress / 100) * processingStages.length),
-  );
-
-  return {
-    ...video,
-    status: nextProgress > 32 ? "processing" : video.status,
-    progressStage: processingStages[stageIndex],
-    progressPercent: nextProgress,
-    clipsFound:
-      nextProgress > 34
-        ? Math.max(video.clipsFound ?? 0, Math.floor(nextProgress / 5))
-        : video.clipsFound,
-  };
+  return selected.length === 1 ? selected[0] : undefined;
 }

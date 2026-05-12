@@ -10,15 +10,20 @@ import {
   RefreshCw,
   Rows3,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ClipCard } from "@/components/ClipCard";
 import { EmptyState } from "@/components/EmptyState";
-import { ExportModal } from "@/components/ExportModal";
+import { ExportModal, type ExportSettings } from "@/components/ExportModal";
 import { LoadingState } from "@/components/LoadingState";
 import { ProgressStage } from "@/components/ProgressStage";
 import { QualityBadge } from "@/components/QualityBadge";
-import { mockClips, mockVideos } from "@/lib/mock-data";
+import {
+  createExport,
+  getVideo as fetchVideo,
+  getVideoClips,
+  updateClipQuality as patchClipQuality,
+} from "@/lib/api";
 import type { ClipItem, ClipQuality, VideoItem } from "@/lib/types";
 import {
   cn,
@@ -40,12 +45,48 @@ const tabs: Array<{ id: ClipTab; label: string }> = [
 export default function VideoDetailPage() {
   const router = useRouter();
   const params = useParams<{ videoId: string }>();
-  const video = getVideo(params.videoId);
+  const videoId = params.videoId;
+  const [video, setVideo] = useState<VideoItem>();
+  const [clips, setClips] = useState<ClipItem[]>([]);
   const [activeTab, setActiveTab] = useState<ClipTab>("good");
   const [exportOpen, setExportOpen] = useState(false);
-  const [clips, setClips] = useState<ClipItem[]>(() =>
-    mockClips.filter((clip) => clip.videoId === params.videoId),
-  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reviewError, setReviewError] = useState("");
+
+  const loadVideo = useCallback(async () => {
+    try {
+      const nextVideo = await fetchVideo(videoId);
+      const nextClips = await getVideoClips(videoId, "all");
+      setVideo(nextVideo);
+      setClips(nextClips);
+      setError("");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not load video detail.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [videoId]);
+
+  useEffect(() => {
+    void loadVideo();
+  }, [loadVideo]);
+
+  useEffect(() => {
+    if (!video || !["queued", "processing", "uploading"].includes(video.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadVideo();
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [loadVideo, video]);
 
   const summary = useMemo(() => summarize(video, clips), [clips, video]);
   const visibleClips = useMemo(() => {
@@ -55,6 +96,67 @@ export default function VideoDetailPage() {
 
     return clips.filter((clip) => clip.quality === activeTab);
   }, [activeTab, clips]);
+
+  async function updateClipQuality(clipId: string, quality: ClipQuality) {
+    const previousClips = clips;
+    setReviewError("");
+    setClips((currentClips) =>
+      currentClips.map((clip) =>
+        clip.id === clipId
+          ? {
+              ...clip,
+              quality,
+              exportable: quality !== "rejected",
+              rejectionReasons:
+                quality === "rejected"
+                  ? clip.rejectionReasons ?? ["manual_reviewer_rejected_clip"]
+                  : [],
+            }
+          : clip,
+      ),
+    );
+
+    try {
+      const updatedClip = await patchClipQuality(clipId, quality);
+      setClips((currentClips) =>
+        currentClips.map((clip) => (clip.id === clipId ? updatedClip : clip)),
+      );
+      const nextVideo = await fetchVideo(videoId);
+      setVideo(nextVideo);
+    } catch (caughtError) {
+      setClips(previousClips);
+      setReviewError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not update clip quality.",
+      );
+    }
+  }
+
+  async function handleVideoExport(settings: ExportSettings) {
+    return createExport({
+      mode: "video",
+      videoId,
+      filters: {
+        quality: selectedQuality(settings.quality) ?? "good",
+      },
+      ...settings.include,
+      includeTranscripts: settings.metadata.transcript,
+      includeQualityScores: settings.metadata.scores,
+      includeTags: settings.metadata.tags,
+      includeRejectionReasons: settings.metadata.rejectionReasons,
+    });
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen px-5 py-6 text-zinc-100 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <LoadingState label="Loading video detail..." />
+        </div>
+      </main>
+    );
+  }
 
   if (!video) {
     return (
@@ -70,28 +172,10 @@ export default function VideoDetailPage() {
           </button>
           <EmptyState
             title="Video not found."
-            description="This demo dataset does not have metadata for that video ID yet."
+            description={error || "The backend does not have metadata for that video ID."}
           />
         </div>
       </main>
-    );
-  }
-
-  function updateClipQuality(clipId: string, quality: ClipQuality) {
-    setClips((currentClips) =>
-      currentClips.map((clip) =>
-        clip.id === clipId
-          ? {
-              ...clip,
-              quality,
-              exportable: quality !== "rejected",
-              rejectionReasons:
-                quality === "rejected"
-                  ? clip.rejectionReasons ?? ["manual reviewer rejected clip"]
-                  : undefined,
-            }
-          : clip,
-      ),
     );
   }
 
@@ -124,7 +208,8 @@ export default function VideoDetailPage() {
             <button
               type="button"
               onClick={() => setExportOpen(true)}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-100"
+              disabled={!summary.good}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
               Export Good Clips
@@ -139,6 +224,12 @@ export default function VideoDetailPage() {
             </button>
           </div>
         </header>
+
+        {error || reviewError ? (
+          <p className="rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
+            {reviewError || error}
+          </p>
+        ) : null}
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <OriginalVideoPanel video={video} />
@@ -205,6 +296,7 @@ export default function VideoDetailPage() {
         onClose={() => setExportOpen(false)}
         mode="video"
         resultCount={summary.good}
+        onGenerate={handleVideoExport}
       />
     </main>
   );
@@ -280,7 +372,15 @@ function SummaryPanel({
           label="Top rejection"
           value={summary.topRejectionReason}
         />
-        <SummaryLine icon={FileArchive} label="Processing time" value="3m 41s" />
+        <SummaryLine
+          icon={FileArchive}
+          label="Processing time"
+          value={
+            video.processingTimeSeconds
+              ? formatDuration(video.processingTimeSeconds)
+              : "n/a"
+          }
+        />
       </div>
       <div className="mt-5">
         <ProgressStage video={video} />
@@ -348,13 +448,12 @@ function summarize(video: VideoItem | undefined, clips: ClipItem[]) {
     .filter((clip) => clip.quality === "good")
     .reduce((total, clip) => total + clip.duration, 0);
   const rejectionReasons = clips.flatMap((clip) => clip.rejectionReasons ?? []);
-  const topRejectionReason = rejectionReasons[0] ?? "face too small";
+  const topRejectionReason =
+    rejectionReasons[0] ?? video?.mostCommonRejectionReason ?? "n/a";
   const averageQuality =
     clips.length > 0
       ? clips.reduce((total, clip) => total + clip.qualityScore, 0) / clips.length
-      : video?.status === "complete"
-        ? 0.78
-        : undefined;
+      : undefined;
 
   return {
     candidates,
@@ -367,27 +466,14 @@ function summarize(video: VideoItem | undefined, clips: ClipItem[]) {
   };
 }
 
-function getVideo(videoId: string) {
-  if (videoId.startsWith("video_upload_")) {
-    return {
-      id: videoId,
-      title: "Uploaded Video",
-      filename: "uploaded-video.mp4",
-      sourceType: "upload",
-      status: "complete",
-      progressStage: "complete",
-      progressPercent: 100,
-      durationSeconds: 166,
-      fileSizeMb: 132,
-      resolution: "1920x1080",
-      fps: 30,
-      clipsFound: 18,
-      goodClips: 11,
-      reviewClips: 4,
-      rejectedClips: 3,
-      createdAt: new Date().toISOString(),
-    } satisfies VideoItem;
+function selectedQuality(quality: ExportSettings["quality"]): ClipQuality | "any" | undefined {
+  const selected = Object.entries(quality)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key as ClipQuality);
+
+  if (selected.length === 0) {
+    return "any";
   }
 
-  return mockVideos.find((item) => item.id === videoId);
+  return selected.length === 1 ? selected[0] : undefined;
 }

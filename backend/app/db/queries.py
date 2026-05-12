@@ -313,10 +313,19 @@ def update_clip_quality(clip_id: str, quality: str) -> dict[str, Any] | None:
         connection.execute(
             """
             UPDATE clips
-            SET quality = ?, exportable = ?, updated_at = ?
+            SET quality = ?,
+                exportable = ?,
+                rejection_reasons_json = ?,
+                updated_at = ?
             WHERE id = ?
             """,
-            (quality, 0 if quality == "rejected" else 1, now, clip_id),
+            (
+                quality,
+                0 if quality == "rejected" else 1,
+                '["manual_reviewer_rejected_clip"]' if quality == "rejected" else "[]",
+                now,
+                clip_id,
+            ),
         )
     refresh_video_counts(row["video_id"])
     return get_clip(clip_id)
@@ -497,6 +506,7 @@ def video_response(row: dict[str, Any]) -> dict[str, Any]:
         "goodClips": counts["good"],
         "reviewClips": counts["review"],
         "rejectedClips": counts["rejected"],
+        "error": job.get("error") if job else None,
         "createdAt": row["created_at"],
     }
 
