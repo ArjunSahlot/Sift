@@ -15,10 +15,8 @@ The Python requirements include FastAPI, Uvicorn, NumPy, multipart upload suppor
 
 ## Storage
 
-Set `SIFT_DATA_DIR` on the VM so media and SQLite data live outside the cloned repo:
-
 ```text
-/opt/sift/
+backend/local_data/
   data/sift.db
   storage/raw/
   storage/normalized/
@@ -28,8 +26,6 @@ Set `SIFT_DATA_DIR` on the VM so media and SQLite data live outside the cloned r
   tmp/
   logs/
 ```
-
-If `SIFT_DATA_DIR` is not set, development data defaults to `backend/local_data/`.
 
 ## Environment
 

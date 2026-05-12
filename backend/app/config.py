@@ -67,7 +67,7 @@ class Settings:
 def load_settings() -> Settings:
     _load_dotenv()
 
-    data_dir = Path(os.environ.get("SIFT_DATA_DIR", BACKEND_DIR / "local_data"))
+    data_dir = Path(BACKEND_DIR / "local_data")
     storage_dir = data_dir / "storage"
     max_upload_mb = _int_env("SIFT_MAX_UPLOAD_MB", 250)
 
