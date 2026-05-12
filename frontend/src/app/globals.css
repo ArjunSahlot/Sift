@@ -26,10 +26,7 @@ html {
 body {
   margin: 0;
   color: hsl(var(--foreground));
-  background:
-    radial-gradient(circle at 12% 10%, rgba(39, 156, 255, 0.13), transparent 30rem),
-    radial-gradient(circle at 86% 0%, rgba(35, 255, 180, 0.08), transparent 28rem),
-    hsl(var(--background));
+  background: linear-gradient(180deg, #0c111d 0%, hsl(var(--background)) 42%, #05070b 100%);
 }
 
 button,
@@ -41,4 +38,11 @@ textarea {
 
 ::selection {
   background: rgba(56, 189, 248, 0.35);
+}
+
+.sift-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
 }
