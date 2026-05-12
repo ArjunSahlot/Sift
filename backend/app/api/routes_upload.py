@@ -91,6 +91,7 @@ async def upload_video(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         remove_video_files(video_id)
+        logger.exception("Unexpected error during upload for video_id=%s: %s", video_id, exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Upload failed while validating video.",
