@@ -33,6 +33,23 @@ def analyze_speech_segments(
     max_segment_seconds: float = 20.0,
     max_segments: int = 30,
 ) -> dict[str, Any]:
+    silero = _silero_speech_segments(
+        audio_path,
+        sample_rate=16000,
+        max_segments=max_segments,
+    )
+    if silero is not None:
+        return _postprocess_analysis(
+            silero,
+            method="silero_vad_onnx",
+            sample_rate=16000,
+            frame_seconds=0.03,
+            min_segment_seconds=min_segment_seconds,
+            merge_gap_seconds=merge_gap_seconds,
+            max_segment_seconds=max_segment_seconds,
+            max_segments=max_segments,
+        )
+
     samples, sample_rate = read_wav_mono(audio_path)
     if samples.size == 0:
         return {
@@ -102,6 +119,7 @@ def analyze_speech_segments(
         "segments": segments,
         "raw_segments": raw_segments,
         "merged_segments": merged,
+        "method": "energy_fallback",
         "frame_seconds": frame_seconds,
         "sample_rate": sample_rate,
         "threshold": float(threshold),
@@ -109,6 +127,118 @@ def analyze_speech_segments(
         "active_frame_count": int(np.sum(active)),
         "active_coverage": float(np.mean(active)),
         "rms_samples": _downsample_rms(rms, threshold),
+    }
+
+
+def speech_coverage_for_range(
+    speech_segments: list[dict[str, float]],
+    start: float,
+    end: float,
+) -> dict[str, Any]:
+    duration = max(0.0, end - start)
+    overlaps: list[dict[str, float]] = []
+    total = 0.0
+    for segment in speech_segments:
+        overlap_start = max(start, float(segment["start"]))
+        overlap_end = min(end, float(segment["end"]))
+        if overlap_end <= overlap_start:
+            continue
+        total += overlap_end - overlap_start
+        overlaps.append(
+            {
+                "start": round(overlap_start - start, 3),
+                "end": round(overlap_end - start, 3),
+                "absolute_start": round(overlap_start, 3),
+                "absolute_end": round(overlap_end, 3),
+            }
+        )
+    coverage = total / duration if duration > 0 else 0.0
+    return {
+        "has_speech": total >= 0.2 or coverage >= 0.05,
+        "speech_seconds": round(total, 3),
+        "speech_coverage": round(coverage, 4),
+        "segments": overlaps,
+    }
+
+
+def _silero_speech_segments(
+    audio_path: str | Path,
+    *,
+    sample_rate: int,
+    max_segments: int,
+) -> list[dict[str, float]] | None:
+    try:
+        from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+    except Exception:  # noqa: BLE001
+        return None
+
+    try:
+        model = _silero_model()
+        wav = read_audio(str(audio_path), sampling_rate=sample_rate)
+        segments = get_speech_timestamps(
+            wav,
+            model,
+            sampling_rate=sample_rate,
+            return_seconds=True,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+    return [
+        {
+            "start": float(segment["start"]),
+            "end": float(segment["end"]),
+        }
+        for segment in segments[: max_segments * 3]
+        if float(segment.get("end", 0)) > float(segment.get("start", 0))
+    ]
+
+
+_SILERO_MODEL: Any | None = None
+
+
+def _silero_model() -> Any:
+    global _SILERO_MODEL
+    if _SILERO_MODEL is None:
+        from silero_vad import load_silero_vad
+
+        _SILERO_MODEL = load_silero_vad(onnx=True)
+    return _SILERO_MODEL
+
+
+def _postprocess_analysis(
+    raw_segments: list[dict[str, float]],
+    *,
+    method: str,
+    sample_rate: int,
+    frame_seconds: float,
+    min_segment_seconds: float,
+    merge_gap_seconds: float,
+    max_segment_seconds: float,
+    max_segments: int,
+) -> dict[str, Any]:
+    merged = _merge_segments(raw_segments, merge_gap_seconds)
+    split = _split_segments(merged, max_segment_seconds)
+    filtered = [
+        segment
+        for segment in split
+        if segment["end"] - segment["start"] >= min_segment_seconds
+    ]
+    segments = filtered[:max_segments]
+    total_duration = max((segment["end"] for segment in raw_segments), default=0.0)
+    active_duration = sum(segment["end"] - segment["start"] for segment in raw_segments)
+    return {
+        "segments": segments,
+        "raw_segments": raw_segments,
+        "merged_segments": merged,
+        "method": method,
+        "frame_seconds": frame_seconds,
+        "sample_rate": sample_rate,
+        "threshold": None,
+        "frame_count": None,
+        "active_frame_count": None,
+        "active_coverage": active_duration / total_duration if total_duration > 0 else 0.0,
+        "rms_samples": [],
     }
 
 
