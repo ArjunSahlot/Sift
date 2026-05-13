@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FileText, SlidersHorizontal, Volume2, UserRoundCheck } from "lucide-react";
+import { CheckCircle2, DatabaseZap, FileText, Mic2, SlidersHorizontal, Volume2, UserRoundCheck } from "lucide-react";
 import type { QueryFilters } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,26 @@ const durationOptions = [
   { value: "long", label: "> 20s" },
 ] as const;
 
+const speakerOptions = [
+  { value: "any", label: "Any" },
+  { value: "0", label: "0 speakers" },
+  { value: "1", label: "1 speaker" },
+  { value: "2plus", label: "2+ speakers" },
+] as const;
+
+const axisOptions = [
+  { value: "any", label: "Any" },
+  { value: "on-axis", label: "On-axis" },
+  { value: "off-axis", label: "Off-axis" },
+  { value: "mixed", label: "Mixed" },
+] as const;
+
+const speechOptions = [
+  { value: "any", label: "Any" },
+  { value: "detected", label: "Speech detected" },
+  { value: "none", label: "No speech" },
+] as const;
+
 export function FilterBar({ filters, onChange }: FilterBarProps) {
   return (
     <div className="space-y-4 rounded-lg border border-white/10 bg-panel p-4">
@@ -57,8 +77,50 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
           options={durationOptions}
           onSelect={(duration) => onChange({ ...filters, duration })}
         />
+        <OptionGroup
+          label="Speakers"
+          value={filters.speaker}
+          options={speakerOptions}
+          onSelect={(speaker) =>
+            onChange({
+              ...filters,
+              speaker,
+              faceAxis: speaker === "1" ? filters.faceAxis : "any",
+            })
+          }
+        />
+        <OptionGroup
+          label="Face axis"
+          value={filters.faceAxis}
+          options={axisOptions}
+          disabled={filters.speaker !== "1"}
+          helper={filters.speaker === "1" ? undefined : "Select 1 speaker first"}
+          onSelect={(faceAxis) => onChange({ ...filters, faceAxis })}
+        />
+        <OptionGroup
+          label="Speech"
+          value={filters.speech}
+          options={speechOptions}
+          onSelect={(speech) => onChange({ ...filters, speech })}
+        />
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <Toggle
+          label="Semantic ready"
+          icon={DatabaseZap}
+          checked={filters.embedding === "ready"}
+          onChange={(checked) =>
+            onChange({ ...filters, embedding: checked ? "ready" : "any" })
+          }
+        />
+        <Toggle
+          label="Speech detected"
+          icon={Mic2}
+          checked={filters.speech === "detected"}
+          onChange={(checked) =>
+            onChange({ ...filters, speech: checked ? "detected" : "any" })
+          }
+        />
         <Toggle
           label="Face visible"
           icon={UserRoundCheck}
@@ -93,6 +155,8 @@ type OptionGroupProps<T extends string> = {
   value: T;
   options: ReadonlyArray<{ value: T; label: string }>;
   onSelect: (value: T) => void;
+  disabled?: boolean;
+  helper?: string;
 };
 
 function OptionGroup<T extends string>({
@@ -100,6 +164,8 @@ function OptionGroup<T extends string>({
   value,
   options,
   onSelect,
+  disabled = false,
+  helper,
 }: OptionGroupProps<T>) {
   return (
     <div className="space-y-2">
@@ -113,10 +179,12 @@ function OptionGroup<T extends string>({
               key={option.value}
               type="button"
               onClick={() => onSelect(option.value)}
+              disabled={disabled}
               className={cn(
                 "h-8 rounded-md border border-white/10 px-2.5 text-xs font-medium text-zinc-400 transition",
                 active && "border-cyan-300/40 bg-cyan-300/10 text-cyan-100",
                 !active && "hover:border-white/20 hover:bg-white/[0.04] hover:text-zinc-100",
+                disabled && "cursor-not-allowed opacity-45 hover:border-white/10 hover:bg-transparent hover:text-zinc-400",
               )}
             >
               {option.label}
@@ -124,6 +192,7 @@ function OptionGroup<T extends string>({
           );
         })}
       </div>
+      {helper ? <p className="text-[11px] text-zinc-600">{helper}</p> : null}
     </div>
   );
 }

@@ -18,8 +18,12 @@ def classify_clip(
     )
     tags: list[str] = []
     reasons: list[str] = []
+    speaker_bucket = str(face_stats.get("speaker_bucket") or "0")
+    face_axis = str(face_stats.get("face_axis") or "unknown")
 
-    if speech_score >= 0.45:
+    if speech_score >= 0.08:
+        tags.append("speech-detected")
+    if speech_score >= 0.35:
         tags.append("human-speaking")
     else:
         reasons.append("low_speech_coverage")
@@ -35,23 +39,31 @@ def classify_clip(
     elif audio_score < 0.35:
         reasons.append("audio_quality_low")
 
-    if int(face_stats.get("face_count_estimate") or 0) <= 1:
-        tags.append("single-speaker-likely")
+    if speaker_bucket == "0":
+        tags.append("speaker-0")
+    elif speaker_bucket == "1":
+        tags.append("single-speaker")
+        tags.append("speaker-1")
+        if face_axis in {"on-axis", "off-axis", "mixed"}:
+            tags.append(f"{face_axis}-face")
+    else:
+        tags.append("multi-speaker")
+        tags.append("speaker-2plus")
 
     if duration < 3:
         reasons.append("too_short")
-    if duration > 20:
-        reasons.append("too_long")
     if float(audio_stats.get("silence_ratio") or 0) > 0.65:
         reasons.append("too_much_silence")
     if float(audio_stats.get("audio_clipping_ratio") or 0) > 0.02:
         reasons.append("audio_clipping")
 
-    if speech_score < 0.45:
+    if speech_score < 0.08:
         quality = "rejected"
-    elif face_score < 0.30:
-        quality = "rejected"
+    elif face_score < 0.20:
+        quality = "review"
     elif audio_score < 0.35:
+        quality = "review"
+    elif speaker_bucket == "2plus" or face_axis == "off-axis":
         quality = "review"
     elif quality_score >= 0.75:
         quality = "good"

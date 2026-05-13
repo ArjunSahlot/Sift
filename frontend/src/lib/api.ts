@@ -101,6 +101,12 @@ export type DebugMediaClip = {
   speechScore?: number;
   faceScore?: number;
   audioScore?: number;
+  hasSpeech?: boolean;
+  speechCoverage?: number;
+  speakerCount?: number;
+  speakerBucket?: string;
+  faceAxis?: string;
+  embeddingStatus?: string;
   transcript?: string | null;
   tags?: string[];
   rejectionReasons?: string[];
@@ -216,6 +222,18 @@ export async function searchClips({
   if (filters.duration !== "any") {
     params.set("duration", filters.duration);
   }
+  if (filters.speaker !== "any") {
+    params.set("speaker", filters.speaker);
+  }
+  if (filters.faceAxis !== "any") {
+    params.set("axis", filters.faceAxis);
+  }
+  if (filters.speech !== "any") {
+    params.set("speech", filters.speech);
+  }
+  if (filters.embedding !== "any") {
+    params.set("embedding", filters.embedding);
+  }
 
   const clips = await request<ClipItem[]>(`/api/search?${params.toString()}`, {
     cache: "no-store",
@@ -224,7 +242,7 @@ export async function searchClips({
     return (
       (!filters.faceVisible || clip.tags.includes("face-visible")) &&
       (!filters.audioClean || clip.tags.includes("clean-audio")) &&
-      (!filters.hasTranscript || Boolean(clip.transcript)) &&
+    (!filters.hasTranscript || Boolean(clip.transcript)) &&
       (!filters.exportableOnly || clip.exportable)
     );
   });
@@ -295,6 +313,7 @@ function normalizeClip(clip: ClipItem): ClipItem {
     ...clip,
     clipUrl: resolveMediaUrl(clip.clipUrl) ?? clip.clipUrl,
     thumbnailUrl: resolveMediaUrl(clip.thumbnailUrl),
+    bestFrameUrl: resolveMediaUrl(clip.bestFrameUrl),
   };
 }
 

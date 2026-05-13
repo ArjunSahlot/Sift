@@ -41,6 +41,14 @@ def _origins(value: str | None) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
+def _path_env(name: str, default: Path) -> Path:
+    value = os.environ.get(name)
+    if not value:
+        return default
+    path = Path(value)
+    return path if path.is_absolute() else BACKEND_DIR / path
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -91,9 +99,9 @@ def load_settings() -> Settings:
         debug_dir=storage_dir / "debug",
         tmp_dir=data_dir / "tmp",
         logs_dir=data_dir / "logs",
-        face_model_path=Path(
-            os.environ.get("SIFT_YUNET_MODEL_PATH")
-            or BACKEND_DIR / "models" / "yunet_fd.onnx"
+        face_model_path=_path_env(
+            "SIFT_YUNET_MODEL_PATH",
+            BACKEND_DIR / "models" / "yunet_fd.onnx",
         ),
         media_url_prefix="/media",
         max_upload_mb=max_upload_mb,

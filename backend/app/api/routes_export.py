@@ -99,11 +99,17 @@ def _select_export_clips(payload: ExportRequest) -> list[dict]:
 
     clip_type = str(payload.filters.get("type") or "any")
     duration = str(payload.filters.get("duration") or "any")
+    speaker = str(payload.filters.get("speaker") or "any")
+    face_axis = str(payload.filters.get("faceAxis") or payload.filters.get("axis") or "any")
+    speech = str(payload.filters.get("speech") or "any")
     return queries.search_clips(
         query=payload.query or "",
         quality=quality,
         clip_type=clip_type,
         duration=duration,
+        speaker=speaker,
+        face_axis=face_axis,
+        speech=speech,
     )
 
 
@@ -119,6 +125,13 @@ def _manifest_record(record: dict, payload: ExportRequest) -> dict:
         "duration": record["duration"],
         "quality": record["quality"],
         "exportable": record["exportable"],
+        "sceneIndex": record.get("sceneIndex"),
+        "hasSpeech": record.get("hasSpeech"),
+        "speechCoverage": record.get("speechCoverage"),
+        "speakerCount": record.get("speakerCount"),
+        "speakerBucket": record.get("speakerBucket"),
+        "faceAxis": record.get("faceAxis"),
+        "embeddingStatus": record.get("embeddingStatus"),
     }
     if payload.includeTranscripts:
         output["transcript"] = record["transcript"]

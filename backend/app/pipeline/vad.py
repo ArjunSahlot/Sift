@@ -168,13 +168,17 @@ def _silero_speech_segments(
     max_segments: int,
 ) -> list[dict[str, float]] | None:
     try:
-        from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+        from silero_vad import get_speech_timestamps
+        import torch
     except Exception:  # noqa: BLE001
         return None
 
     try:
         model = _silero_model()
-        wav = read_audio(str(audio_path), sampling_rate=sample_rate)
+        samples, actual_sample_rate = read_wav_mono(audio_path)
+        if actual_sample_rate != sample_rate or samples.size == 0:
+            return None
+        wav = torch.from_numpy(samples.astype("float32"))
         segments = get_speech_timestamps(
             wav,
             model,

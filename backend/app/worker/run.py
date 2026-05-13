@@ -5,6 +5,7 @@ import time
 
 from app.db import queries
 from app.db.init import init_db
+from app.pipeline.embeddings import start_embedding_worker
 from app.pipeline.process_video import process_video_job
 from app.utils.cleanup import run_cleanup
 from app.utils.files import ensure_data_dirs
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 def run_worker() -> None:
     ensure_data_dirs()
     init_db()
+    start_embedding_worker()
     logger.info("sift_worker_started")
 
     while True:

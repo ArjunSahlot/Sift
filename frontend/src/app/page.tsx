@@ -28,6 +28,7 @@ import type { ClipItem, ClipQuality, Mode, QueryFilters, VideoItem } from "@/lib
 import { cn, formatDuration } from "@/lib/utils";
 
 const processingStages = [
+  "detecting_scenes",
   "detecting_speech",
   "extracting_clips",
   "generating_thumbnails",
@@ -39,6 +40,10 @@ const initialFilters: QueryFilters = {
   quality: "good",
   type: "speaking",
   duration: "any",
+  speaker: "any",
+  faceAxis: "any",
+  speech: "any",
+  embedding: "any",
   faceVisible: false,
   audioClean: false,
   hasTranscript: false,

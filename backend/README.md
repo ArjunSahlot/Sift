@@ -1,6 +1,6 @@
 # Sift Backend
 
-Sift is a VM-local FastAPI backend for a talking-head video dataset curation demo. It accepts short video uploads, queues a SQLite-backed processing job, uses FFmpeg and lightweight CV/audio heuristics to extract human-speaking clips, stores metadata locally, supports search, and exports a training-ready ZIP.
+Sift is a VM-local FastAPI backend for a talking-head video dataset curation demo. It accepts short video uploads, queues a SQLite-backed processing job, cuts the full video into scene clips, attaches speech/face/audio/embedding metadata, supports search, and exports a training-ready ZIP.
 
 ## System Packages
 
@@ -11,7 +11,7 @@ sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip ffmpeg
 ```
 
-The Python requirements include FastAPI, Uvicorn, NumPy, multipart upload support, and OpenCV headless for Haar-cascade face detection.
+The Python dependencies are managed by `uv` in `pyproject.toml`. The processing stack includes PySceneDetect, Silero VAD, OpenCV YuNet, sentence-transformers CLIP, and FAISS.
 
 ## Storage
 
@@ -22,6 +22,9 @@ backend/local_data/
   storage/normalized/
   storage/clips/
   storage/thumbnails/
+  storage/frames/
+  storage/index/
+  storage/debug/
   storage/exports/
   tmp/
   logs/
@@ -41,6 +44,7 @@ SIFT_MAX_DURATION_SECONDS=300
 SIFT_MAX_QUEUE_SIZE=5
 SIFT_MAX_NON_EXAMPLE_VIDEOS=40
 SIFT_CORS_ORIGINS=http://localhost:3000,https://your-vercel-app.vercel.app
+SIFT_YUNET_MODEL_PATH=./models/yunet_fd.onnx
 ```
 
 ## Local Development Setup
@@ -49,7 +53,8 @@ SIFT_CORS_ORIGINS=http://localhost:3000,https://your-vercel-app.vercel.app
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install uv
+uv sync
 python -m app.db.init
 ```
 
@@ -74,7 +79,8 @@ git clone <repo-url>
 cd <repo>/backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install uv
+uv sync
 cp .env.example .env
 python -m app.db.init
 ```
@@ -102,10 +108,18 @@ For production-ish VM usage, put Nginx in front of Uvicorn and serve `/media/` d
 - `GET /api/jobs/{job_id}`
 - `GET /api/videos/{video_id}/clips?quality=all`
 - `GET /api/search?q=whiteboard&quality=good&type=speaking`
+- `GET /api/videos/{video_id}/debug`
 - `PATCH /api/clips/{clip_id}`
 - `POST /api/export`
 
-Media URLs are returned as `/media/raw/...`, `/media/clips/...`, `/media/thumbnails/...`, and `/media/exports/...`.
+Media URLs are returned as `/media/raw/...`, `/media/clips/...`, `/media/thumbnails/...`, `/media/frames/...`, and `/media/exports/...`.
+
+## Pipeline Notes
+
+- Scene detection creates clips whose union covers the full normalized video.
+- Silero VAD marks speech regions and speech coverage on each scene clip.
+- YuNet face detection estimates speaker bucket (`0`, `1`, `2plus`) and face axis for single-speaker clips.
+- The worker marks clips `embedding_status=pending` when the main job completes. A background embedding thread builds the CLIP/FAISS frame index without blocking the upload processing job.
 
 ## Add Example Videos
 

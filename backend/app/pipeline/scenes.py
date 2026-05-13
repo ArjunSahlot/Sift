@@ -75,9 +75,39 @@ def _cover_full_video(
     if not covered:
         covered = [_scene_record(0.0, duration, "full_video_fallback")]
 
+    covered = _merge_tiny_segments(covered)
     for index, scene in enumerate(covered):
         scene["scene_index"] = index
     return covered
+
+
+def _merge_tiny_segments(
+    scenes: list[dict[str, Any]],
+    *,
+    min_duration: float = 0.5,
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    for scene in scenes:
+        if merged and float(scene["duration_seconds"]) < min_duration:
+            merged[-1]["end_seconds"] = scene["end_seconds"]
+            merged[-1]["end_timecode"] = scene["end_timecode"]
+            merged[-1]["duration_seconds"] = round(
+                float(merged[-1]["end_seconds"]) - float(merged[-1]["start_seconds"]),
+                3,
+            )
+            merged[-1]["source"] = f"{merged[-1].get('source', 'scene')}+tiny_merge"
+        else:
+            merged.append(dict(scene))
+    if len(merged) > 1 and float(merged[0]["duration_seconds"]) < min_duration:
+        first = merged.pop(0)
+        merged[0]["start_seconds"] = first["start_seconds"]
+        merged[0]["start_timecode"] = first["start_timecode"]
+        merged[0]["duration_seconds"] = round(
+            float(merged[0]["end_seconds"]) - float(merged[0]["start_seconds"]),
+            3,
+        )
+        merged[0]["source"] = f"tiny_merge+{merged[0].get('source', 'scene')}"
+    return merged
 
 
 def _scene_record(start: float, end: float, source: str) -> dict[str, Any]:

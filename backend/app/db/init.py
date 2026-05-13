@@ -82,7 +82,6 @@ CREATE TABLE IF NOT EXISTS exports (
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_clips_video_id ON clips(video_id);
 CREATE INDEX IF NOT EXISTS idx_clips_quality ON clips(quality);
-CREATE INDEX IF NOT EXISTS idx_clips_embedding_status ON clips(embedding_status);
 CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at);
 """
 
@@ -97,6 +96,10 @@ MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN embedding_updated_at TEXT",
 ]
 
+POST_MIGRATION_SQL = """
+CREATE INDEX IF NOT EXISTS idx_clips_embedding_status ON clips(embedding_status);
+"""
+
 
 def init_db() -> None:
     ensure_data_dirs()
@@ -108,6 +111,7 @@ def init_db() -> None:
             except Exception as exc:  # noqa: BLE001
                 if "duplicate column name" not in str(exc).lower():
                     raise
+        connection.executescript(POST_MIGRATION_SQL)
 
 
 if __name__ == "__main__":

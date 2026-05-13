@@ -118,11 +118,11 @@ export function DebugDropdown({
           <span className="shrink-0 text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">
             Pipeline debug
           </span>
-          {summary ? (
+      {summary ? (
             <span className="truncate text-xs text-zinc-500">
               {summary.completed}/{summary.total} stages
               {summary.failed ? ` · ${summary.failed} failed` : ""}
-              {` · ${summary.speechSegments} speech · ${summary.faceHits} face · ${summary.clipsOut} clips`}
+              {` · ${summary.speechSegments} speech · ${summary.faceHits} face · ${summary.clipsOut} scene clips`}
             </span>
           ) : (
             <span className="truncate text-xs text-zinc-500">
@@ -493,6 +493,10 @@ function StageVisual({
     return <MediaStageVisual data={data} />;
   }
 
+  if (stage.id === "detecting_scenes") {
+    return <SceneStageVisual data={data} />;
+  }
+
   if (stage.id === "detecting_speech") {
     return <SpeechStageVisual data={data} stage={stage} />;
   }
@@ -511,6 +515,10 @@ function StageVisual({
 
   if (stage.id === "transcribing") {
     return <TranscriptStageVisual clips={data.media.clips} />;
+  }
+
+  if (stage.id === "indexing_embeddings") {
+    return <EmbeddingStageVisual clips={data.media.clips} />;
   }
 
   return (
@@ -568,12 +576,26 @@ function SpeechStageVisual({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex items-center gap-2 text-sm font-medium text-cyan-100">
           <Waves className="h-4 w-4" />
-          Speech segments selected for extraction
+          Speech regions over scene clips
         </div>
         <div className="flex gap-2 text-xs text-cyan-200/75">
           {activeCoverage != null ? <span>{Math.round(activeCoverage * 100)}% active</span> : null}
           {threshold != null ? <span>threshold {threshold.toFixed(4)}</span> : null}
         </div>
+      </div>
+      {track ? <TimelineTrack duration={data.timeline.durationSeconds} track={track} /> : null}
+    </div>
+  );
+}
+
+function SceneStageVisual({ data }: { data: VideoDebugPayload }) {
+  const track = data.timeline.tracks.find((item) => item.id === "clips");
+
+  return (
+    <div className="rounded-md border border-violet-400/15 bg-violet-400/[0.04] p-3">
+      <div className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-violet-100">
+        <Scissors className="h-4 w-4" />
+        Scene boundaries cover the full video
       </div>
       {track ? <TimelineTrack duration={data.timeline.durationSeconds} track={track} /> : null}
     </div>
@@ -625,10 +647,15 @@ function QualityStageVisual({ clips }: { clips: DebugMediaClip[] }) {
           </div>
           <div className="grid grid-cols-4 gap-2">
             <MiniScore label="Quality" value={clip.qualityScore} />
-            <MiniScore label="Speech" value={clip.speechScore} />
-            <MiniScore label="Face" value={clip.faceScore} />
-            <MiniScore label="Audio" value={clip.audioScore} />
-          </div>
+          <MiniScore label="Speech" value={clip.speechScore} />
+          <MiniScore label="Face" value={clip.faceScore} />
+          <MiniScore label="Audio" value={clip.audioScore} />
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-[11px] text-zinc-500">
+          <span>{clip.hasSpeech ? "speech" : "no speech"}</span>
+          <span>{speakerLabel(clip.speakerBucket)}</span>
+          <span>{clip.faceAxis ?? "unknown"}</span>
+        </div>
           {clip.tags?.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {clip.tags.slice(0, 6).map((tag) => (
@@ -640,6 +667,30 @@ function QualityStageVisual({ clips }: { clips: DebugMediaClip[] }) {
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+function EmbeddingStageVisual({ clips }: { clips: DebugMediaClip[] }) {
+  const counts = clips.reduce<Record<string, number>>((acc, clip) => {
+    const status = clip.embeddingStatus ?? "pending";
+    acc[status] = (acc[status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="rounded-md border border-sky-400/15 bg-sky-400/[0.04] p-3">
+      <div className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-sky-100">
+        <Gauge className="h-4 w-4" />
+        Background semantic embedding index
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(counts).map(([status, count]) => (
+          <span key={status} className="rounded-md border border-white/10 bg-black/25 px-2 py-1 text-xs text-zinc-300">
+            {status}: {count}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -823,6 +874,7 @@ function segmentClassName(segment: DebugTimelineSegment) {
   if (segment.kind === "speech") return "border-cyan-300/40 bg-cyan-300/30 text-cyan-50";
   if (segment.kind === "clip") return "border-violet-300/40 bg-violet-300/25 text-violet-50";
   if (segment.kind === "face") return "border-amber-300/40 bg-amber-300/30 text-amber-50";
+  if (segment.kind === "embedding") return "border-sky-300/40 bg-sky-300/25 text-sky-50";
   if (segment.quality === "good") return "border-emerald-300/40 bg-emerald-300/30 text-emerald-50";
   if (segment.quality === "review") return "border-yellow-300/40 bg-yellow-300/30 text-yellow-50";
   if (segment.quality === "rejected") return "border-rose-300/40 bg-rose-300/30 text-rose-50";
@@ -841,6 +893,13 @@ function qualityLabel(quality?: string) {
   if (quality === "review") return "Needs Review";
   if (quality === "rejected") return "Rejected";
   return quality ?? "Pending";
+}
+
+function speakerLabel(value?: string) {
+  if (value === "0") return "0 speakers";
+  if (value === "1") return "1 speaker";
+  if (value === "2plus") return "2+ speakers";
+  return value ?? "unknown";
 }
 
 function formatRange(start?: number, end?: number) {

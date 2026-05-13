@@ -20,6 +20,7 @@ STAGE_ORDER = [
     "probing_video",
     "normalizing",
     "extracting_audio",
+    "detecting_scenes",
     "detecting_speech",
     "extracting_clips",
     "generating_thumbnails",
@@ -27,12 +28,14 @@ STAGE_ORDER = [
     "scoring_quality",
     "transcribing",
     "saving_results",
+    "indexing_embeddings",
 ]
 
 STAGE_LABELS = {
     "probing_video": "Probe video",
     "normalizing": "Normalize video",
     "extracting_audio": "Extract audio",
+    "detecting_scenes": "Detect scenes",
     "detecting_speech": "Detect speech (VAD)",
     "extracting_clips": "Extract clips",
     "generating_thumbnails": "Generate thumbnails",
@@ -40,12 +43,14 @@ STAGE_LABELS = {
     "scoring_quality": "Score quality",
     "transcribing": "Transcribe",
     "saving_results": "Save results",
+    "indexing_embeddings": "Index embeddings",
 }
 
 STAGE_MODULES = {
     "probing_video": "app.pipeline.probe.probe_video",
     "normalizing": "app.pipeline.normalize.normalize_video",
     "extracting_audio": "app.pipeline.audio.extract_audio",
+    "detecting_scenes": "app.pipeline.scenes.detect_scenes",
     "detecting_speech": "app.pipeline.vad.analyze_speech_segments",
     "extracting_clips": "app.pipeline.clip_extract.extract_clip",
     "generating_thumbnails": "app.pipeline.thumbnails.generate_thumbnail",
@@ -53,6 +58,7 @@ STAGE_MODULES = {
     "scoring_quality": "app.pipeline.quality.classify_clip",
     "transcribing": "app.pipeline.transcribe.transcribe_clip",
     "saving_results": "app.db.queries.insert_clip",
+    "indexing_embeddings": "app.pipeline.embeddings.build_embedding_index",
 }
 
 
@@ -147,6 +153,19 @@ def _stage_payload(
     current_stage: str | None,
     job_status: str | None,
 ) -> dict[str, Any]:
+    if stage_id == "indexing_embeddings":
+        return {
+            "id": stage_id,
+            "label": STAGE_LABELS[stage_id],
+            "status": _embedding_stage_status(media_clips),
+            "module": STAGE_MODULES[stage_id],
+            "startedAt": None,
+            "completedAt": None,
+            "error": None,
+            "inputs": {"clips": len(media_clips), "model": "clip-ViT-B-32"},
+            "outputs": _embedding_outputs(media_clips),
+        }
+
     outputs = stored.get("outputs")
     if not isinstance(outputs, dict) or not outputs:
         outputs = _fallback_outputs(stage_id, video, clips, media_clips)
@@ -170,7 +189,7 @@ def _stage_payload(
 def _fallback_inputs(stage_id: str, video: dict[str, Any]) -> dict[str, Any]:
     if stage_id == "probing_video":
         return {"raw": _file_info(video.get("raw_path"))}
-    if stage_id in {"normalizing", "extracting_audio", "detecting_speech"}:
+    if stage_id in {"normalizing", "extracting_audio", "detecting_scenes", "detecting_speech"}:
         return {"normalized": _file_info(video.get("normalized_path"))}
     return {}
 
@@ -191,6 +210,8 @@ def _fallback_outputs(
         }
     if stage_id == "detecting_speech":
         return {"segments": [_segment_from_clip(clip) for clip in clips]}
+    if stage_id == "detecting_scenes":
+        return {"scenes": [_segment_from_clip(clip) for clip in clips]}
     if stage_id in {"extracting_clips", "generating_thumbnails"}:
         return {"clips": media_clips}
     if stage_id == "running_face_detection":
@@ -253,6 +274,12 @@ def _media_clips(
                 "speechScore": row["speech_score"],
                 "faceScore": row["face_score"],
                 "audioScore": row["audio_score"],
+                "hasSpeech": bool(row.get("has_speech")),
+                "speechCoverage": row.get("speech_coverage"),
+                "speakerCount": row.get("speaker_count"),
+                "speakerBucket": row.get("speaker_bucket"),
+                "faceAxis": row.get("face_axis"),
+                "embeddingStatus": row.get("embedding_status"),
                 "transcript": row.get("transcript"),
                 "tags": _json_list(row.get("tags_json")),
                 "rejectionReasons": _json_list(row.get("rejection_reasons_json")),
@@ -280,6 +307,12 @@ def _media_clips(
                 "speechScore": item.get("speechScore"),
                 "faceScore": item.get("faceScore"),
                 "audioScore": item.get("audioScore"),
+                "hasSpeech": item.get("hasSpeech"),
+                "speechCoverage": item.get("speechCoverage"),
+                "speakerCount": item.get("speakerCount"),
+                "speakerBucket": item.get("speakerBucket"),
+                "faceAxis": item.get("faceAxis"),
+                "embeddingStatus": item.get("embeddingStatus"),
                 "tags": item.get("tags") or [],
                 "rejectionReasons": item.get("rejectionReasons") or [],
                 "exportable": item.get("exportable"),
@@ -319,12 +352,6 @@ def _timeline_tracks(
         for index, segment in enumerate(speech_outputs.get("segments") or [])
         if isinstance(segment, dict)
     ]
-    if not speech_segments:
-        speech_segments = [
-            _timeline_segment(clip["id"], "Speech candidate", clip.get("start"), clip.get("end"), "speech")
-            for clip in media_clips
-        ]
-
     clip_segments = [
         _timeline_segment(
             str(clip.get("id")),
@@ -357,7 +384,7 @@ def _timeline_tracks(
         {
             "id": "speech",
             "label": "Speech VAD",
-            "description": "Final VAD segments selected for candidate extraction.",
+            "description": "Silero VAD speech regions overlaid on scene clips.",
             "segments": _bounded_segments(speech_segments, duration_seconds),
         },
         {
@@ -378,7 +405,53 @@ def _timeline_tracks(
             "description": "Final curation decision per clip.",
             "segments": _bounded_segments(quality_segments, duration_seconds),
         },
+        {
+            "id": "embeddings",
+            "label": "Embedding Index",
+            "description": "CLIP frame embedding status for semantic search.",
+            "segments": _bounded_segments(
+                [
+                    _timeline_segment(
+                        f"embedding_{clip.get('id')}",
+                        str(clip.get("embeddingStatus") or "pending"),
+                        clip.get("start"),
+                        clip.get("end"),
+                        "embedding",
+                        clip_id=clip.get("id"),
+                    )
+                    for clip in media_clips
+                ],
+                duration_seconds,
+            ),
+        },
     ]
+
+
+def _embedding_outputs(media_clips: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for clip in media_clips:
+        status = str(clip.get("embeddingStatus") or "pending")
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "statusCounts": counts,
+        "clips": [
+            {"id": clip.get("id"), "embeddingStatus": clip.get("embeddingStatus")}
+            for clip in media_clips
+        ],
+    }
+
+
+def _embedding_stage_status(media_clips: list[dict[str, Any]]) -> str:
+    statuses = {str(clip.get("embeddingStatus") or "pending") for clip in media_clips}
+    if not media_clips:
+        return "pending"
+    if "indexing" in statuses:
+        return "running"
+    if "failed" in statuses:
+        return "failed"
+    if statuses == {"complete"}:
+        return "complete"
+    return "pending"
 
 
 def _face_segments(

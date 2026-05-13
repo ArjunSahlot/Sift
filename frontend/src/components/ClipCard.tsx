@@ -63,7 +63,26 @@ export function ClipCard({ clip, reviewControls = false, onQualityChange }: Clip
           <ScorePill label="Speech" score={clip.speechScore} />
           <ScorePill label="Face" score={clip.faceScore} />
           <ScorePill label="Audio" score={clip.audioScore} />
+          <ScorePill label="Semantic" score={clip.semanticScore} />
         </div>
+        <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400">
+          <Meta label="Speech" value={clip.hasSpeech ? "detected" : "none"} />
+          <Meta label="Speakers" value={speakerLabel(clip.speakerBucket)} />
+          <Meta label="Face axis" value={clip.faceAxis ?? "unknown"} />
+          <Meta label="Embeddings" value={clip.embeddingStatus ?? "pending"} />
+        </div>
+        {clip.bestFrameUrl ? (
+          <div className="overflow-hidden rounded-md border border-white/10 bg-black/30">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={clip.bestFrameUrl} alt="" className="h-24 w-full object-cover" />
+            <p className="px-2 py-1 text-[11px] text-zinc-500">
+              Best semantic frame
+              {clip.bestFrameTimeSeconds != null
+                ? ` @ ${formatDuration(clip.bestFrameTimeSeconds)}`
+                : ""}
+            </p>
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-1.5">
           {clip.tags.slice(0, 5).map((tag) => (
             <span
@@ -107,6 +126,22 @@ export function ClipCard({ clip, reviewControls = false, onQualityChange }: Clip
       </div>
     </article>
   );
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.025] px-2 py-1.5">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">{label}</p>
+      <p className="mt-1 truncate text-xs text-zinc-300">{value}</p>
+    </div>
+  );
+}
+
+function speakerLabel(value?: string) {
+  if (value === "0") return "0";
+  if (value === "1") return "1";
+  if (value === "2plus") return "2+";
+  return value ?? "unknown";
 }
 
 function ReviewButton({

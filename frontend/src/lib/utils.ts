@@ -76,10 +76,12 @@ export function stageLabel(stage?: string) {
     queued: "Queued for processing...",
     uploading: "Uploading video...",
     detecting_speech: "Detecting speech...",
+    detecting_scenes: "Detecting scene changes...",
     extracting_clips: "Extracting clips...",
     running_face_detection: "Running face detection...",
     scoring_quality: "Scoring quality...",
     generating_thumbnails: "Generating thumbnails...",
+    indexing_embeddings: "Indexing semantic embeddings...",
     complete: "Complete",
   };
 
@@ -118,6 +120,18 @@ export function filterClips(clips: ClipItem[], query: string, filters: QueryFilt
         clip.duration >= 10 &&
         clip.duration <= 20) ||
       (filters.duration === "long" && clip.duration > 20);
+    const matchesSpeaker =
+      filters.speaker === "any" || clip.speakerBucket === filters.speaker;
+    const matchesAxis =
+      filters.faceAxis === "any" || clip.faceAxis === filters.faceAxis;
+    const matchesSpeech =
+      filters.speech === "any" ||
+      (filters.speech === "detected" && clip.hasSpeech) ||
+      (filters.speech === "none" && !clip.hasSpeech);
+    const matchesEmbedding =
+      filters.embedding === "any" ||
+      (filters.embedding === "ready" && clip.embeddingStatus === "complete") ||
+      (filters.embedding === "pending" && clip.embeddingStatus !== "complete");
     const matchesToggles =
       (!filters.faceVisible || clip.tags.includes("face-visible")) &&
       (!filters.audioClean || clip.tags.includes("clean-audio")) &&
@@ -129,6 +143,10 @@ export function filterClips(clips: ClipItem[], query: string, filters: QueryFilt
       matchesQuality &&
       matchesType &&
       matchesDuration &&
+      matchesSpeaker &&
+      matchesAxis &&
+      matchesSpeech &&
+      matchesEmbedding &&
       matchesToggles
     );
   });

@@ -232,7 +232,15 @@ def mark_job_failed(job_id: str, video_id: str, error: str) -> None:
 def insert_clip(values: dict[str, Any]) -> None:
     now = utc_now()
     payload = {
+        "scene_index": None,
         "transcript": None,
+        "has_speech": 0,
+        "speech_coverage": 0.0,
+        "speaker_count": 0,
+        "speaker_bucket": "0",
+        "face_axis": "unknown",
+        "embedding_status": "pending",
+        "embedding_updated_at": now,
         "tags_json": "[]",
         "rejection_reasons_json": "[]",
         "exportable": 1,
@@ -244,16 +252,19 @@ def insert_clip(values: dict[str, Any]) -> None:
         connection.execute(
             """
             INSERT INTO clips (
-              id, video_id, clip_path, thumbnail_path, start_time, end_time,
+              id, video_id, scene_index, clip_path, thumbnail_path, start_time, end_time,
               duration, quality, quality_score, speech_score, face_score,
-              audio_score, transcript, tags_json, rejection_reasons_json,
-              exportable, created_at, updated_at
+              audio_score, has_speech, speech_coverage, speaker_count, speaker_bucket,
+              face_axis, embedding_status, embedding_updated_at, transcript, tags_json,
+              rejection_reasons_json, exportable, created_at, updated_at
             )
             VALUES (
-              :id, :video_id, :clip_path, :thumbnail_path, :start_time,
+              :id, :video_id, :scene_index, :clip_path, :thumbnail_path, :start_time,
               :end_time, :duration, :quality, :quality_score, :speech_score,
-              :face_score, :audio_score, :transcript, :tags_json,
-              :rejection_reasons_json, :exportable, :created_at, :updated_at
+              :face_score, :audio_score, :has_speech, :speech_coverage, :speaker_count,
+              :speaker_bucket, :face_axis, :embedding_status, :embedding_updated_at,
+              :transcript, :tags_json, :rejection_reasons_json, :exportable,
+              :created_at, :updated_at
             )
             """,
             payload,
@@ -360,6 +371,11 @@ def search_clips(
     quality: str = "any",
     clip_type: str = "any",
     duration: str = "any",
+    speaker: str = "any",
+    face_axis: str = "any",
+    speech: str = "any",
+    embedding: str = "any",
+    semantic_clip_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     quality = quality.replace("-", "_")
     clip_type = clip_type.replace("-", "_")
@@ -394,7 +410,7 @@ def search_clips(
             ]
         ).lower()
 
-        if normalized_query and normalized_query not in haystack:
+        if semantic_clip_ids is None and normalized_query and normalized_query not in haystack:
             continue
         if quality not in {"any", "all", ""} and clip["quality"] != quality:
             continue
@@ -415,9 +431,81 @@ def search_clips(
             continue
         if duration == "gt20" and float(clip["duration"]) <= 20:
             continue
+        if speaker not in {"any", "all", ""} and str(clip.get("speaker_bucket") or "0") != speaker:
+            continue
+        if face_axis not in {"any", "all", ""} and str(clip.get("face_axis") or "unknown") != face_axis:
+            continue
+        if speech == "detected" and not bool(clip.get("has_speech")):
+            continue
+        if speech == "none" and bool(clip.get("has_speech")):
+            continue
+        if embedding == "ready" and clip.get("embedding_status") != "complete":
+            continue
+        if embedding == "pending" and clip.get("embedding_status") == "complete":
+            continue
+        if semantic_clip_ids is not None and clip["id"] not in semantic_clip_ids:
+            continue
 
         results.append(clip)
+    if semantic_clip_ids is not None:
+        order = {clip_id: index for index, clip_id in enumerate(semantic_clip_ids)}
+        results.sort(key=lambda clip: order.get(clip["id"], 999999))
     return results
+
+
+def all_clips_for_embedding() -> list[dict[str, Any]]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT * FROM clips
+            WHERE clip_path IS NOT NULL
+            ORDER BY datetime(created_at) ASC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def pending_embedding_video_ids(limit: int = 1) -> list[str]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT DISTINCT video_id
+            FROM clips
+            WHERE embedding_status IN ('pending', 'failed')
+            ORDER BY datetime(created_at) ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [str(row["video_id"]) for row in rows]
+
+
+def update_video_embedding_status(video_id: str, status: str) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE clips
+            SET embedding_status = ?, embedding_updated_at = ?, updated_at = ?
+            WHERE video_id = ?
+            """,
+            (status, utc_now(), utc_now(), video_id),
+        )
+
+
+def update_clip_embedding_status(clip_ids: list[str], status: str) -> None:
+    if not clip_ids:
+        return
+    placeholders = ",".join("?" for _ in clip_ids)
+    now = utc_now()
+    with get_connection() as connection:
+        connection.execute(
+            f"""
+            UPDATE clips
+            SET embedding_status = ?, embedding_updated_at = ?, updated_at = ?
+            WHERE id IN ({placeholders})
+            """,
+            [status, now, now, *clip_ids],
+        )
 
 
 def create_export(values: dict[str, Any]) -> None:
@@ -539,6 +627,7 @@ def clip_response(row: dict[str, Any]) -> dict[str, Any]:
         "sourceVideoTitle": row["source_video_title"],
         "clipUrl": media_url(row.get("clip_path")),
         "thumbnailUrl": media_url(row.get("thumbnail_path")),
+        "sceneIndex": row.get("scene_index"),
         "startTime": row["start_time"],
         "endTime": row["end_time"],
         "duration": row["duration"],
@@ -547,6 +636,15 @@ def clip_response(row: dict[str, Any]) -> dict[str, Any]:
         "speechScore": row["speech_score"],
         "faceScore": row["face_score"],
         "audioScore": row["audio_score"],
+        "hasSpeech": bool(row.get("has_speech")),
+        "speechCoverage": row.get("speech_coverage"),
+        "speakerCount": row.get("speaker_count"),
+        "speakerBucket": row.get("speaker_bucket"),
+        "faceAxis": row.get("face_axis"),
+        "embeddingStatus": row.get("embedding_status"),
+        "semanticScore": row.get("semantic_score"),
+        "bestFrameUrl": row.get("best_frame_url") or media_url(row.get("best_frame_path")),
+        "bestFrameTimeSeconds": row.get("best_frame_time_seconds"),
         "transcript": row["transcript"],
         "tags": _json_list(row.get("tags_json")),
         "rejectionReasons": _json_list(row.get("rejection_reasons_json")),
