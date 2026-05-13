@@ -162,6 +162,17 @@ export async function uploadVideo(file: File, title?: string) {
   });
 }
 
+export async function uploadYouTube(url: string) {
+  const formData = new FormData();
+  formData.append("url", url);
+  formData.append("sourceType", "youtube");
+
+  return request<UploadResponse>("/api/youtube", {
+    method: "POST",
+    body: formData,
+  });
+}
+
 export async function getPublicVideos() {
   const videos = await request<VideoItem[]>("/api/videos", { cache: "no-store" });
   return videos.map(normalizeVideo);
@@ -211,14 +222,6 @@ export async function searchClips({
   const params = new URLSearchParams();
   params.set("q", query);
 
-  if (filters.quality !== "any") {
-    params.set("quality", filters.quality);
-  }
-
-  if (filters.type !== "any") {
-    params.set("type", filters.type);
-  }
-
   if (filters.duration !== "any") {
     params.set("duration", filters.duration);
   }
@@ -230,9 +233,6 @@ export async function searchClips({
   }
   if (filters.speech !== "any") {
     params.set("speech", filters.speech);
-  }
-  if (filters.embedding !== "any") {
-    params.set("embedding", filters.embedding);
   }
 
   const clips = await request<ClipItem[]>(`/api/search?${params.toString()}`, {

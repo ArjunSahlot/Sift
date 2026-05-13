@@ -140,7 +140,6 @@ export default function VideoDetailPage() {
       mode: "video",
       videoId,
       filters: {
-        quality: selectedQuality(settings.quality) ?? "good",
       },
       ...settings.include,
       includeTranscripts: settings.metadata.transcript,
@@ -308,7 +307,9 @@ export default function VideoDetailPage() {
           )}
         </section>
         
-        <DebugDropdown videoId={videoId} videoStatus={video.status}/>
+        {process.env.NEXT_PUBLIC_ENABLE_DEBUG_ARTIFACTS === "true" && (
+          <DebugDropdown videoId={videoId} videoStatus={video.status}/>
+        )}
       </div>
 
       <ExportModal
@@ -486,14 +487,3 @@ function summarize(video: VideoItem | undefined, clips: ClipItem[]) {
   };
 }
 
-function selectedQuality(quality: ExportSettings["quality"]): ClipQuality | "any" | undefined {
-  const selected = Object.entries(quality)
-    .filter(([, enabled]) => enabled)
-    .map(([key]) => key as ClipQuality);
-
-  if (selected.length === 0) {
-    return "any";
-  }
-
-  return selected.length === 1 ? selected[0] : undefined;
-}

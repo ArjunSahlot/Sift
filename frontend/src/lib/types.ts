@@ -64,9 +64,7 @@ export type ClipItem = {
 export type Mode = "upload" | "query";
 
 export type QueryFilters = {
-  quality: "any" | ClipQuality;
-  type: "any" | "speaking" | "human-visible" | "clean-audio" | "single-speaker";
-  duration: "any" | "short" | "medium" | "long";
+  duration: "any" | "<1" | "<5" | "<10" | "10+";
   speaker: "any" | "0" | "1" | "2plus";
   faceAxis: "any" | "on-axis" | "off-axis" | "mixed";
   speech: "any" | "detected" | "none";

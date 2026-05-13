@@ -64,6 +64,9 @@ STAGE_MODULES = {
 
 @router.get("/videos/{video_id}/debug")
 def get_video_debug(video_id: str) -> dict[str, Any]:
+    if not settings.enable_debug_artifacts:
+        raise HTTPException(status_code=404, detail="Debug artifacts are disabled.")
+
     video = queries.get_video(video_id)
     if video is None:
         raise HTTPException(status_code=404, detail="Video not found.")

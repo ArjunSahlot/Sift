@@ -240,6 +240,8 @@ def _assert_full_coverage(scenes: list[dict[str, Any]], duration: float) -> None
 
 
 def _debug(action: Any, *args: Any, **kwargs: Any) -> None:
+    if not settings.enable_debug_artifacts:
+        return
     try:
         action(*args, **kwargs)
     except Exception as exc:  # noqa: BLE001

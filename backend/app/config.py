@@ -28,6 +28,13 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
 def _origins(value: str | None) -> list[str]:
     if not value:
         return [
@@ -76,7 +83,7 @@ class Settings:
     max_non_example_videos: int
     cors_origins: list[str]
     allowed_extensions: set[str]
-
+    enable_debug_artifacts: bool
 
 def load_settings() -> Settings:
     _load_dotenv()
@@ -114,6 +121,7 @@ def load_settings() -> Settings:
         max_non_example_videos=_int_env("SIFT_MAX_NON_EXAMPLE_VIDEOS", 40),
         cors_origins=_origins(os.environ.get("SIFT_CORS_ORIGINS")),
         allowed_extensions={".mp4", ".mov", ".webm", ".mkv"},
+        enable_debug_artifacts=_bool_env("SIFT_ENABLE_DEBUG_ARTIFACTS", False),
     )
 
 

@@ -9,26 +9,12 @@ type FilterBarProps = {
   onChange: (filters: QueryFilters) => void;
 };
 
-const qualityOptions = [
-  { value: "any", label: "Any" },
-  { value: "good", label: "Good" },
-  { value: "review", label: "Needs Review" },
-  { value: "rejected", label: "Rejected" },
-] as const;
-
-const typeOptions = [
-  { value: "any", label: "Any" },
-  { value: "speaking", label: "Speaking Clips" },
-  { value: "human-visible", label: "Human Visible" },
-  { value: "clean-audio", label: "Clean Audio" },
-  { value: "single-speaker", label: "Single Speaker" },
-] as const;
-
 const durationOptions = [
   { value: "any", label: "Any" },
-  { value: "short", label: "< 10s" },
-  { value: "medium", label: "10-20s" },
-  { value: "long", label: "> 20s" },
+  { value: "<1", label: "< 1s" },
+  { value: "<5", label: "< 5s" },
+  { value: "<10", label: "< 10s" },
+  { value: "10+", label: "10+ s" },
 ] as const;
 
 const speakerOptions = [
@@ -59,18 +45,6 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
         Filters
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
-        <OptionGroup
-          label="Quality"
-          value={filters.quality}
-          options={qualityOptions}
-          onSelect={(quality) => onChange({ ...filters, quality })}
-        />
-        <OptionGroup
-          label="Type"
-          value={filters.type}
-          options={typeOptions}
-          onSelect={(type) => onChange({ ...filters, type })}
-        />
         <OptionGroup
           label="Duration"
           value={filters.duration}

@@ -368,21 +368,17 @@ def refresh_video_counts(video_id: str) -> None:
 
 def search_clips(
     query: str = "",
-    quality: str = "any",
-    clip_type: str = "any",
     duration: str = "any",
     speaker: str = "any",
     face_axis: str = "any",
     speech: str = "any",
-    embedding: str = "any",
     semantic_clip_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    quality = quality.replace("-", "_")
-    clip_type = clip_type.replace("-", "_")
     duration = {
-        "short": "lt10",
-        "medium": "10to20",
-        "long": "gt20",
+        "<1": "lt1",
+        "<5": "lt5",
+        "<10": "lt10",
+        "10+": "gte10",
     }.get(duration, duration)
     with get_connection() as connection:
         rows = connection.execute(
@@ -404,7 +400,6 @@ def search_clips(
             [
                 clip.get("source_video_title") or "",
                 clip.get("transcript") or "",
-                clip.get("quality") or "",
                 " ".join(tags),
                 " ".join(reasons),
             ]
@@ -412,24 +407,13 @@ def search_clips(
 
         if semantic_clip_ids is None and normalized_query and normalized_query not in haystack:
             continue
-        if quality not in {"any", "all", ""} and clip["quality"] != quality:
+        if duration == "lt1" and float(clip["duration"]) >= 1:
             continue
-        if clip_type not in {"any", "all", ""}:
-            if clip_type in {"speaking", "human_speaking"} and "human-speaking" not in tags:
-                continue
-            if clip_type == "human_visible" and "face-visible" not in tags:
-                continue
-            if clip_type == "clean_audio" and "clean-audio" not in tags:
-                continue
-            if clip_type == "single_speaker" and not any(
-                tag.startswith("single-speaker") for tag in tags
-            ):
-                continue
+        if duration == "lt5" and float(clip["duration"]) >= 5:
+            continue
         if duration == "lt10" and float(clip["duration"]) >= 10:
             continue
-        if duration == "10to20" and not (10 <= float(clip["duration"]) <= 20):
-            continue
-        if duration == "gt20" and float(clip["duration"]) <= 20:
+        if duration == "gte10" and float(clip["duration"]) < 10:
             continue
         if speaker not in {"any", "all", ""} and str(clip.get("speaker_bucket") or "0") != speaker:
             continue
@@ -438,10 +422,6 @@ def search_clips(
         if speech == "detected" and not bool(clip.get("has_speech")):
             continue
         if speech == "none" and bool(clip.get("has_speech")):
-            continue
-        if embedding == "ready" and clip.get("embedding_status") != "complete":
-            continue
-        if embedding == "pending" and clip.get("embedding_status") == "complete":
             continue
         if semantic_clip_ids is not None and clip["id"] not in semantic_clip_ids:
             continue

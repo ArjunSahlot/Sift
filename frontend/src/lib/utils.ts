@@ -96,30 +96,18 @@ export function filterClips(clips: ClipItem[], query: string, filters: QueryFilt
       clip.sourceVideoTitle,
       clip.transcript,
       clip.tags.join(" "),
-      clip.quality,
     ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
 
     const matchesQuery = !normalizedQuery || searchable.includes(normalizedQuery);
-    const matchesQuality =
-      filters.quality === "any" || clip.quality === filters.quality;
-    const matchesType =
-      filters.type === "any" ||
-      (filters.type === "speaking" && clip.tags.includes("human-speaking")) ||
-      (filters.type === "human-visible" &&
-        (clip.tags.includes("face-visible") || (clip.faceScore ?? 0) >= 0.7)) ||
-      (filters.type === "clean-audio" &&
-        (clip.tags.includes("clean-audio") || (clip.audioScore ?? 0) >= 0.82)) ||
-      (filters.type === "single-speaker" && clip.tags.includes("single-speaker"));
     const matchesDuration =
       filters.duration === "any" ||
-      (filters.duration === "short" && clip.duration < 10) ||
-      (filters.duration === "medium" &&
-        clip.duration >= 10 &&
-        clip.duration <= 20) ||
-      (filters.duration === "long" && clip.duration > 20);
+      (filters.duration === "<1" && clip.duration < 1) ||
+      (filters.duration === "<5" && clip.duration < 5) ||
+      (filters.duration === "<10" && clip.duration < 10) ||
+      (filters.duration === "10+" && clip.duration >= 10);
     const matchesSpeaker =
       filters.speaker === "any" || clip.speakerBucket === filters.speaker;
     const matchesAxis =
@@ -128,25 +116,14 @@ export function filterClips(clips: ClipItem[], query: string, filters: QueryFilt
       filters.speech === "any" ||
       (filters.speech === "detected" && clip.hasSpeech) ||
       (filters.speech === "none" && !clip.hasSpeech);
-    const matchesEmbedding =
-      filters.embedding === "any" ||
-      (filters.embedding === "ready" && clip.embeddingStatus === "complete") ||
-      (filters.embedding === "pending" && clip.embeddingStatus !== "complete");
-    const matchesToggles =
-      (!filters.faceVisible || clip.tags.includes("face-visible")) &&
-      (!filters.audioClean || clip.tags.includes("clean-audio")) &&
-      (!filters.hasTranscript || Boolean(clip.transcript)) &&
-      (!filters.exportableOnly || clip.exportable);
+    const matchesToggles = !filters.hasTranscript || Boolean(clip.transcript);
 
     return (
       matchesQuery &&
-      matchesQuality &&
-      matchesType &&
       matchesDuration &&
       matchesSpeaker &&
       matchesAxis &&
       matchesSpeech &&
-      matchesEmbedding &&
       matchesToggles
     );
   });

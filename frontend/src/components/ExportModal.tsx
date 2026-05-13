@@ -12,11 +12,6 @@ export type ExportSettings = {
     includeManifest: boolean;
     includeSummary: boolean;
   };
-  quality: {
-    good: boolean;
-    review: boolean;
-    rejected: boolean;
-  };
   metadata: {
     transcript: boolean;
     scores: boolean;
@@ -43,11 +38,6 @@ const includeOptions = [
   ["includeSummary", "Summary report"],
 ] as const;
 
-const qualityOptions = [
-  ["good", "Good"],
-  ["review", "Needs Review"],
-  ["rejected", "Rejected"],
-] as const;
 
 const metadataOptions = [
   ["transcript", "Transcript"],
@@ -73,11 +63,6 @@ export function ExportModal({
     includeManifest: true,
     includeSummary: true,
   });
-  const [quality, setQuality] = useState({
-    good: true,
-    review: mode === "query",
-    rejected: false,
-  });
   const [metadata, setMetadata] = useState({
     transcript: true,
     scores: true,
@@ -94,7 +79,6 @@ export function ExportModal({
     setStage("settings");
     setDownloadUrl(undefined);
     setError("");
-    setQuality({ good: true, review: mode === "query", rejected: false });
   }
 
   function handleClose() {
@@ -107,7 +91,7 @@ export function ExportModal({
     setError("");
 
     try {
-      const response = await onGenerate({ include, quality, metadata });
+      const response = await onGenerate({ include, metadata });
       setDownloadUrl(response.downloadUrl);
       setStage("complete");
     } catch (caughtError) {
@@ -152,24 +136,6 @@ export function ExportModal({
                   ? `Exporting ${resultCount} clips matching the current query and filters.`
                   : `Exporting good clips from this video. ${resultCount} clips are currently selected.`}
               </p>
-              <Checklist
-                title="Include"
-                options={includeOptions}
-                values={include}
-                onChange={(key, value) => setInclude({ ...include, [key]: value })}
-              />
-              <Checklist
-                title="Quality"
-                options={qualityOptions}
-                values={quality}
-                onChange={(key, value) => setQuality({ ...quality, [key]: value })}
-              />
-              <Checklist
-                title="Metadata"
-                options={metadataOptions}
-                values={metadata}
-                onChange={(key, value) => setMetadata({ ...metadata, [key]: value })}
-              />
               {error ? (
                 <p className="rounded-md border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
                   {error}

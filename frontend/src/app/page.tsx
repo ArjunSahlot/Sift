@@ -23,22 +23,20 @@ import {
 } from "@/components/UploadDropzone";
 import { VideoCard } from "@/components/VideoCard";
 import { YouTubeInput } from "@/components/YouTubeInput";
-import { createExport, getPublicVideos, searchClips, uploadVideo } from "@/lib/api";
+import { createExport, getPublicVideos, searchClips, uploadVideo, uploadYouTube } from "@/lib/api";
 import type { ClipItem, ClipQuality, Mode, QueryFilters, VideoItem } from "@/lib/types";
 import { cn, formatDuration } from "@/lib/utils";
 
 const processingStages = [
   "detecting_scenes",
-  "detecting_speech",
   "extracting_clips",
   "generating_thumbnails",
-  "running_face_detection",
-  "scoring_quality",
+  "analyzing_audio",
+  "analyzing_faces",
+  "creating_embeddings",
 ];
 
 const initialFilters: QueryFilters = {
-  quality: "good",
-  type: "speaking",
   duration: "any",
   speaker: "any",
   faceAxis: "any",
@@ -190,10 +188,48 @@ export default function Home() {
     }
   }
 
-  function handleYouTubeSubmit(url: string) {
-    setYoutubeNotice(
-      `YouTube ingestion is still backend-stubbed for this MVP. Captured URL: ${url}`,
-    );
+  async function handleYouTubeSubmit(url: string) {
+    const optimisticId = `optimistic_${Date.now()}`;
+    const optimisticVideo: VideoItem = {
+      id: optimisticId,
+      title: "YouTube Video",
+      filename: url,
+      sourceType: "youtube",
+      status: "uploading",
+      progressStage: "uploading",
+      progressPercent: 5,
+      videoUrl: "",
+      durationSeconds: 0,
+      fileSizeMb: 0,
+      clipsFound: 0,
+      goodClips: 0,
+      reviewClips: 0,
+      rejectedClips: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    setUploadError("");
+    setUploadState("uploading");
+    setVideos((currentVideos) => [optimisticVideo, ...currentVideos]);
+
+    try {
+      await uploadYouTube(url);
+      setUploadState("complete");
+      await refreshVideos();
+      window.setTimeout(() => setUploadState("idle"), 1800);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "YouTube ingestion failed. Try another URL.";
+      setUploadError(message);
+      setUploadState("failed");
+      setVideos((currentVideos) =>
+        currentVideos.map((video) =>
+          video.id === optimisticId
+            ? { ...video, status: "failed", error: message, progressPercent: 100 }
+            : video,
+        ),
+      );
+    }
   }
 
   function handleVideoClick(video: VideoItem) {
@@ -208,10 +244,7 @@ export default function Home() {
     return createExport({
       mode: "query",
       query,
-      filters: {
-        ...filters,
-        quality: selectedQuality(settings.quality) ?? filters.quality,
-      },
+      filters,
       ...settings.include,
       includeTranscripts: settings.metadata.transcript,
       includeQualityScores: settings.metadata.scores,
@@ -525,14 +558,3 @@ function Stat({
   );
 }
 
-function selectedQuality(quality: ExportSettings["quality"]): ClipQuality | "any" | undefined {
-  const selected = Object.entries(quality)
-    .filter(([, enabled]) => enabled)
-    .map(([key]) => key as ClipQuality);
-
-  if (selected.length === 0) {
-    return "any";
-  }
-
-  return selected.length === 1 ? selected[0] : undefined;
-}
