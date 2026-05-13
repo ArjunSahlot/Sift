@@ -51,6 +51,7 @@ class Settings:
     clips_dir: Path
     thumbnails_dir: Path
     exports_dir: Path
+    debug_dir: Path
     tmp_dir: Path
     logs_dir: Path
     media_url_prefix: str
@@ -69,7 +70,7 @@ class Settings:
 def load_settings() -> Settings:
     _load_dotenv()
 
-    data_dir = Path(BACKEND_DIR / "local_data")
+    data_dir = BACKEND_DIR / "local_data"
     storage_dir = data_dir / "storage"
     max_upload_mb = _int_env("SIFT_MAX_UPLOAD_MB", 250)
 
@@ -82,6 +83,7 @@ def load_settings() -> Settings:
         clips_dir=storage_dir / "clips",
         thumbnails_dir=storage_dir / "thumbnails",
         exports_dir=storage_dir / "exports",
+        debug_dir=storage_dir / "debug",
         tmp_dir=data_dir / "tmp",
         logs_dir=data_dir / "logs",
         media_url_prefix="/media",

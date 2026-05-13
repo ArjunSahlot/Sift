@@ -14,6 +14,7 @@ def ensure_data_dirs() -> None:
         settings.clips_dir,
         settings.thumbnails_dir,
         settings.exports_dir,
+        settings.debug_dir,
         settings.tmp_dir,
         settings.logs_dir,
     ]:
@@ -65,5 +66,6 @@ def remove_video_files(video_id: str) -> None:
         settings.normalized_dir,
         settings.clips_dir,
         settings.thumbnails_dir,
+        settings.debug_dir,
     ]:
         remove_path(base / video_id)

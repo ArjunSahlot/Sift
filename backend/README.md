@@ -36,7 +36,6 @@ cp .env.example .env
 Useful variables:
 
 ```env
-SIFT_DATA_DIR=/opt/sift
 SIFT_MAX_UPLOAD_MB=250
 SIFT_MAX_DURATION_SECONDS=300
 SIFT_MAX_QUEUE_SIZE=5
