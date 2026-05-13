@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     routes_clips,
+    routes_debug,
     routes_export,
     routes_health,
     routes_jobs,
@@ -44,5 +45,6 @@ app.include_router(routes_jobs.router)
 app.include_router(routes_clips.router)
 app.include_router(routes_search.router)
 app.include_router(routes_export.router)
+app.include_router(routes_debug.router)
 
 app.mount("/media", StaticFiles(directory=settings.storage_dir), name="media")

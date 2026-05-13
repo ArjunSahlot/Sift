@@ -44,6 +44,41 @@ export type ExportResponse = {
   downloadUrl?: string;
 };
 
+export type DebugFileInfo = {
+  path: string | null;
+  exists: boolean;
+  sizeBytes: number | null;
+};
+
+export type DebugStageStatus =
+  | "pending"
+  | "running"
+  | "complete"
+  | "failed"
+  | "skipped";
+
+export type DebugStage = {
+  id: string;
+  label: string;
+  status: DebugStageStatus;
+  module?: string;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+};
+
+export type VideoDebugPayload = {
+  video: Record<string, unknown> & {
+    id: string;
+    raw?: DebugFileInfo;
+    normalized?: DebugFileInfo;
+    coverThumbnail?: DebugFileInfo;
+  };
+  job: Record<string, unknown> | null;
+  settings: Record<string, unknown>;
+  stages: DebugStage[];
+};
+
+
 export function isApiConfigured() {
   return Boolean(process.env.NEXT_PUBLIC_API_URL);
 }
@@ -68,6 +103,12 @@ export async function getPublicVideos() {
   return videos.map(normalizeVideo);
 }
 
+export async function reprocessVideo(videoId: string) {
+  return request<UploadResponse>(`/api/videos/${videoId}/reprocess`, {
+    method: "POST",
+  });
+}
+
 export async function getVideo(videoId: string) {
   const video = await request<VideoItem>(`/api/videos/${videoId}`, {
     cache: "no-store",
@@ -83,6 +124,12 @@ export async function getVideoClips(videoId: string, quality: ClipQuality | "all
     { cache: "no-store" },
   );
   return clips.map(normalizeClip);
+}
+
+export function getVideoDebug(videoId: string) {
+  return request<VideoDebugPayload>(`/api/videos/${videoId}/debug`, {
+    cache: "no-store",
+  });
 }
 
 export function getJobStatus(jobId: string) {

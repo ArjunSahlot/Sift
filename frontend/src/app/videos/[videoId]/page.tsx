@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ClipCard } from "@/components/ClipCard";
+import { DebugDropdown } from "@/components/DebugDropdown";
 import { EmptyState } from "@/components/EmptyState";
 import { ExportModal, type ExportSettings } from "@/components/ExportModal";
 import { LoadingState } from "@/components/LoadingState";
@@ -23,6 +24,7 @@ import {
   getVideo as fetchVideo,
   getVideoClips,
   updateClipQuality as patchClipQuality,
+  reprocessVideo,
 } from "@/lib/api";
 import type { ClipItem, ClipQuality, VideoItem } from "@/lib/types";
 import {
@@ -148,6 +150,21 @@ export default function VideoDetailPage() {
     });
   }
 
+  async function handleReprocess() {
+    try {
+      setLoading(true);
+      await reprocessVideo(videoId);
+      await loadVideo();
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not reprocess video.",
+      );
+      setLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen px-5 py-6 text-zinc-100 lg:px-8">
@@ -216,8 +233,9 @@ export default function VideoDetailPage() {
             </button>
             <button
               type="button"
-              disabled
-              className="inline-flex h-10 cursor-not-allowed items-center justify-center gap-2 rounded-md border border-white/10 px-4 text-sm font-medium text-zinc-600"
+              disabled={video.status === "queued" || video.status === "processing"}
+              onClick={() => void handleReprocess()}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-white/10 px-4 text-sm font-medium text-zinc-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw className="h-4 w-4" />
               Reprocess
@@ -289,6 +307,8 @@ export default function VideoDetailPage() {
             />
           )}
         </section>
+        
+        <DebugDropdown videoId={videoId} videoStatus={video.status}/>
       </div>
 
       <ExportModal
