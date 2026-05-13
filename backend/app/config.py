@@ -51,9 +51,12 @@ class Settings:
     clips_dir: Path
     thumbnails_dir: Path
     exports_dir: Path
+    frames_dir: Path
+    index_dir: Path
     debug_dir: Path
     tmp_dir: Path
     logs_dir: Path
+    face_model_path: Path
     media_url_prefix: str
     max_upload_mb: int
     max_upload_bytes: int
@@ -83,9 +86,15 @@ def load_settings() -> Settings:
         clips_dir=storage_dir / "clips",
         thumbnails_dir=storage_dir / "thumbnails",
         exports_dir=storage_dir / "exports",
+        frames_dir=storage_dir / "frames",
+        index_dir=storage_dir / "index",
         debug_dir=storage_dir / "debug",
         tmp_dir=data_dir / "tmp",
         logs_dir=data_dir / "logs",
+        face_model_path=Path(
+            os.environ.get("SIFT_YUNET_MODEL_PATH")
+            or BACKEND_DIR / "models" / "yunet_fd.onnx"
+        ),
         media_url_prefix="/media",
         max_upload_mb=max_upload_mb,
         max_upload_bytes=max_upload_mb * 1024 * 1024,

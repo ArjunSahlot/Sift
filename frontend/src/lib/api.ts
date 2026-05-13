@@ -48,6 +48,7 @@ export type DebugFileInfo = {
   path: string | null;
   exists: boolean;
   sizeBytes: number | null;
+  url?: string | null;
 };
 
 export type DebugStageStatus =
@@ -62,11 +63,58 @@ export type DebugStage = {
   label: string;
   status: DebugStageStatus;
   module?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  error?: string | null;
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
 };
 
+export type DebugTimelineSegment = {
+  id: string;
+  label: string;
+  start: number;
+  end: number;
+  kind: "speech" | "clip" | "face" | "quality" | string;
+  clipId?: string;
+  quality?: ClipQuality | string;
+  score?: number;
+};
+
+export type DebugTimelineTrack = {
+  id: string;
+  label: string;
+  description?: string;
+  segments: DebugTimelineSegment[];
+};
+
+export type DebugMediaClip = {
+  id: string;
+  index?: number;
+  start?: number;
+  end?: number;
+  duration?: number;
+  clipUrl?: string;
+  thumbnailUrl?: string;
+  quality?: ClipQuality | string;
+  qualityScore?: number;
+  speechScore?: number;
+  faceScore?: number;
+  audioScore?: number;
+  transcript?: string | null;
+  tags?: string[];
+  rejectionReasons?: string[];
+  exportable?: boolean;
+  faceStats?: Record<string, unknown>;
+  audioStats?: Record<string, unknown>;
+  files?: {
+    clip?: DebugFileInfo;
+    thumbnail?: DebugFileInfo;
+  };
+};
+
 export type VideoDebugPayload = {
+  schemaVersion?: number;
   video: Record<string, unknown> & {
     id: string;
     raw?: DebugFileInfo;
@@ -75,6 +123,16 @@ export type VideoDebugPayload = {
   };
   job: Record<string, unknown> | null;
   settings: Record<string, unknown>;
+  media: {
+    rawUrl?: string;
+    normalizedUrl?: string;
+    coverThumbnailUrl?: string;
+    clips: DebugMediaClip[];
+  };
+  timeline: {
+    durationSeconds: number;
+    tracks: DebugTimelineTrack[];
+  };
   stages: DebugStage[];
 };
 
@@ -126,10 +184,11 @@ export async function getVideoClips(videoId: string, quality: ClipQuality | "all
   return clips.map(normalizeClip);
 }
 
-export function getVideoDebug(videoId: string) {
-  return request<VideoDebugPayload>(`/api/videos/${videoId}/debug`, {
+export async function getVideoDebug(videoId: string) {
+  const debug = await request<VideoDebugPayload>(`/api/videos/${videoId}/debug`, {
     cache: "no-store",
   });
+  return normalizeDebug(debug);
 }
 
 export function getJobStatus(jobId: string) {
@@ -237,6 +296,46 @@ function normalizeClip(clip: ClipItem): ClipItem {
     clipUrl: resolveMediaUrl(clip.clipUrl) ?? clip.clipUrl,
     thumbnailUrl: resolveMediaUrl(clip.thumbnailUrl),
   };
+}
+
+function normalizeDebug(debug: VideoDebugPayload): VideoDebugPayload {
+  return {
+    ...debug,
+    video: normalizeDebugValue(debug.video) as VideoDebugPayload["video"],
+    media: {
+      ...debug.media,
+      rawUrl: resolveMediaUrl(debug.media?.rawUrl),
+      normalizedUrl: resolveMediaUrl(debug.media?.normalizedUrl),
+      coverThumbnailUrl: resolveMediaUrl(debug.media?.coverThumbnailUrl),
+      clips: (debug.media?.clips ?? []).map((clip) => ({
+        ...clip,
+        clipUrl: resolveMediaUrl(clip.clipUrl),
+        thumbnailUrl: resolveMediaUrl(clip.thumbnailUrl),
+        files: normalizeDebugValue(clip.files) as DebugMediaClip["files"],
+      })),
+    },
+    stages: (debug.stages ?? []).map((stage) => ({
+      ...stage,
+      inputs: normalizeDebugValue(stage.inputs) as Record<string, unknown>,
+      outputs: normalizeDebugValue(stage.outputs) as Record<string, unknown>,
+    })),
+  };
+}
+
+function normalizeDebugValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeDebugValue);
+  }
+
+  if (value && typeof value === "object") {
+    const next: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      next[key] = key === "url" && typeof item === "string" ? resolveMediaUrl(item) : normalizeDebugValue(item);
+    }
+    return next;
+  }
+
+  return value;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
