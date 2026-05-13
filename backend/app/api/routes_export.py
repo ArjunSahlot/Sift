@@ -88,28 +88,25 @@ def create_export(payload: ExportRequest) -> dict[str, str]:
 
 
 def _select_export_clips(payload: ExportRequest) -> list[dict]:
-    quality = str(payload.filters.get("quality") or "any")
     if payload.mode == "video":
         if not payload.videoId:
             raise HTTPException(status_code=400, detail="videoId is required.")
         if queries.get_video(payload.videoId) is None:
             raise HTTPException(status_code=404, detail="Video not found.")
-        query_quality = quality if quality in {"good", "review", "rejected"} else "all"
-        return queries.get_clips_for_video(payload.videoId, query_quality)
+        return queries.get_clips_for_video(payload.videoId)
 
-    clip_type = str(payload.filters.get("type") or "any")
     duration = str(payload.filters.get("duration") or "any")
     speaker = str(payload.filters.get("speaker") or "any")
     face_axis = str(payload.filters.get("faceAxis") or payload.filters.get("axis") or "any")
     speech = str(payload.filters.get("speech") or "any")
+    transcript = str(payload.filters.get("transcript") or "any")
     return queries.search_clips(
         query=payload.query or "",
-        quality=quality,
-        clip_type=clip_type,
         duration=duration,
         speaker=speaker,
         face_axis=face_axis,
         speech=speech,
+        transcript=transcript,
     )
 
 
@@ -123,7 +120,6 @@ def _manifest_record(record: dict, payload: ExportRequest) -> dict:
         "startTime": record["startTime"],
         "endTime": record["endTime"],
         "duration": record["duration"],
-        "quality": record["quality"],
         "exportable": record["exportable"],
         "sceneIndex": record.get("sceneIndex"),
         "hasSpeech": record.get("hasSpeech"),
@@ -152,16 +148,11 @@ def _manifest_record(record: dict, payload: ExportRequest) -> dict:
 
 
 def _summary(clips: list[dict], payload: ExportRequest) -> dict:
-    counts = {"good": 0, "review": 0, "rejected": 0}
-    total_duration = 0.0
-    for clip in clips:
-        counts[clip["quality"]] = counts.get(clip["quality"], 0) + 1
-        total_duration += float(clip["duration"] or 0)
+    total_duration = sum(float(clip.get("duration") or 0) for clip in clips)
     return {
         "mode": payload.mode,
         "query": payload.query,
         "filters": payload.filters,
         "clipCount": len(clips),
-        "qualityCounts": counts,
         "totalDurationSeconds": round(total_duration, 3),
     }

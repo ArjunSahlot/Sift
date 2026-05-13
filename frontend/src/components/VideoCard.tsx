@@ -74,10 +74,8 @@ export function VideoCard({ video, onClick }: VideoCardProps) {
           <h3 className="line-clamp-1 text-base font-semibold text-zinc-50">{video.title}</h3>
           <p className="mt-1 line-clamp-1 text-sm text-zinc-500">{video.filename}</p>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <Metric label="Clips" value={video.clipsFound ?? 0} />
-          <Metric label="Good" value={video.goodClips ?? 0} />
-          <Metric label="Review" value={video.reviewClips ?? 0} />
+        <div className="grid grid-cols-1 gap-2 text-xs">
+          <Metric label="Clips extracted" value={video.clipsFound ?? 0} />
         </div>
         <ProgressStage video={video} compact />
         {video.error ? (

@@ -1,16 +1,10 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { ClipItem, ClipQuality, JobStatus, QueryFilters } from "./types";
+import type { ClipItem, JobStatus, QueryFilters } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-
-export const qualityLabels: Record<ClipQuality, string> = {
-  good: "Good",
-  review: "Needs Review",
-  rejected: "Rejected",
-};
 
 export const statusLabels: Record<JobStatus, string> = {
   queued: "Queued",
@@ -116,7 +110,11 @@ export function filterClips(clips: ClipItem[], query: string, filters: QueryFilt
       filters.speech === "any" ||
       (filters.speech === "detected" && clip.hasSpeech) ||
       (filters.speech === "none" && !clip.hasSpeech);
-    const matchesToggles = !filters.hasTranscript || Boolean(clip.transcript);
+    const hasTranscript = Boolean(clip.transcript?.trim());
+    const matchesTranscript =
+      filters.transcript === "any" ||
+      (filters.transcript === "has" && hasTranscript) ||
+      (filters.transcript === "none" && !hasTranscript);
 
     return (
       matchesQuery &&
@@ -124,7 +122,7 @@ export function filterClips(clips: ClipItem[], query: string, filters: QueryFilt
       matchesSpeaker &&
       matchesAxis &&
       matchesSpeech &&
-      matchesToggles
+      matchesTranscript
     );
   });
 }

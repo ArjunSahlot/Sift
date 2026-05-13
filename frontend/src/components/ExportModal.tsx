@@ -41,10 +41,10 @@ const includeOptions = [
 
 const metadataOptions = [
   ["transcript", "Transcript"],
-  ["scores", "Quality scores"],
+  ["scores", "Composite & signal scores"],
   ["tags", "Tags"],
   ["source", "Source video info"],
-  ["rejectionReasons", "Rejection reasons"],
+  ["rejectionReasons", "Pipeline notes"],
 ] as const;
 
 export function ExportModal({
@@ -116,7 +116,7 @@ export function ExportModal({
               Export a training-ready dataset
             </h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
-              Package selected clips with transcripts, quality scores, and metadata.
+              Package selected clips with transcripts, scores, and metadata.
             </p>
           </div>
           <button
@@ -134,7 +134,7 @@ export function ExportModal({
               <p className="rounded-md border border-white/10 bg-white/[0.035] p-3 text-sm text-zinc-300">
                 {mode === "query"
                   ? `Exporting ${resultCount} clips matching the current query and filters.`
-                  : `Exporting good clips from this video. ${resultCount} clips are currently selected.`}
+                  : `Exporting ${resultCount} clips from this video.`}
               </p>
               {error ? (
                 <p className="rounded-md border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">

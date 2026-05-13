@@ -1,4 +1,4 @@
-import type { ClipItem, ClipQuality, JobStatus, QueryFilters, VideoItem } from "./types";
+import type { ClipItem, JobStatus, QueryFilters, VideoItem } from "./types";
 
 const rawApiBaseUrl =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
@@ -77,7 +77,7 @@ export type DebugTimelineSegment = {
   end: number;
   kind: "speech" | "clip" | "face" | "quality" | string;
   clipId?: string;
-  quality?: ClipQuality | string;
+  quality?: string;
   score?: number;
 };
 
@@ -96,7 +96,7 @@ export type DebugMediaClip = {
   duration?: number;
   clipUrl?: string;
   thumbnailUrl?: string;
-  quality?: ClipQuality | string;
+  quality?: string;
   qualityScore?: number;
   speechScore?: number;
   faceScore?: number;
@@ -191,13 +191,10 @@ export async function getVideo(videoId: string) {
   return normalizeVideo(video);
 }
 
-export async function getVideoClips(videoId: string, quality: ClipQuality | "all" = "all") {
-  const params = new URLSearchParams();
-  params.set("quality", quality);
-  const clips = await request<ClipItem[]>(
-    `/api/videos/${videoId}/clips?${params.toString()}`,
-    { cache: "no-store" },
-  );
+export async function getVideoClips(videoId: string) {
+  const clips = await request<ClipItem[]>(`/api/videos/${videoId}/clips`, {
+    cache: "no-store",
+  });
   return clips.map(normalizeClip);
 }
 
@@ -234,29 +231,14 @@ export async function searchClips({
   if (filters.speech !== "any") {
     params.set("speech", filters.speech);
   }
+  if (filters.transcript !== "any") {
+    params.set("transcript", filters.transcript);
+  }
 
   const clips = await request<ClipItem[]>(`/api/search?${params.toString()}`, {
     cache: "no-store",
   });
-  return clips.map(normalizeClip).filter((clip) => {
-    return (
-      (!filters.faceVisible || clip.tags.includes("face-visible")) &&
-      (!filters.audioClean || clip.tags.includes("clean-audio")) &&
-    (!filters.hasTranscript || Boolean(clip.transcript)) &&
-      (!filters.exportableOnly || clip.exportable)
-    );
-  });
-}
-
-export async function updateClipQuality(clipId: string, quality: ClipQuality) {
-  const clip = await request<ClipItem>(`/api/clips/${clipId}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ quality }),
-  });
-  return normalizeClip(clip);
+  return clips.map(normalizeClip);
 }
 
 export async function createExport(payload: ExportRequest) {
@@ -308,12 +290,13 @@ function normalizeVideo(video: VideoItem): VideoItem {
   };
 }
 
-function normalizeClip(clip: ClipItem): ClipItem {
+function normalizeClip(clip: ClipItem & { quality?: unknown }): ClipItem {
+  const { quality: _unused, ...rest } = clip;
   return {
-    ...clip,
-    clipUrl: resolveMediaUrl(clip.clipUrl) ?? clip.clipUrl,
-    thumbnailUrl: resolveMediaUrl(clip.thumbnailUrl),
-    bestFrameUrl: resolveMediaUrl(clip.bestFrameUrl),
+    ...rest,
+    clipUrl: resolveMediaUrl(rest.clipUrl) ?? rest.clipUrl,
+    thumbnailUrl: resolveMediaUrl(rest.thumbnailUrl),
+    bestFrameUrl: resolveMediaUrl(rest.bestFrameUrl),
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, DatabaseZap, FileText, Mic2, SlidersHorizontal, Volume2, UserRoundCheck } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import type { QueryFilters } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +35,12 @@ const speechOptions = [
   { value: "any", label: "Any" },
   { value: "detected", label: "Speech detected" },
   { value: "none", label: "No speech" },
+] as const;
+
+const transcriptOptions = [
+  { value: "any", label: "Any" },
+  { value: "has", label: "Has transcript" },
+  { value: "none", label: "No transcript" },
 ] as const;
 
 export function FilterBar({ filters, onChange }: FilterBarProps) {
@@ -77,47 +83,11 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
           options={speechOptions}
           onSelect={(speech) => onChange({ ...filters, speech })}
         />
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <Toggle
-          label="Semantic ready"
-          icon={DatabaseZap}
-          checked={filters.embedding === "ready"}
-          onChange={(checked) =>
-            onChange({ ...filters, embedding: checked ? "ready" : "any" })
-          }
-        />
-        <Toggle
-          label="Speech detected"
-          icon={Mic2}
-          checked={filters.speech === "detected"}
-          onChange={(checked) =>
-            onChange({ ...filters, speech: checked ? "detected" : "any" })
-          }
-        />
-        <Toggle
-          label="Face visible"
-          icon={UserRoundCheck}
-          checked={filters.faceVisible}
-          onChange={(faceVisible) => onChange({ ...filters, faceVisible })}
-        />
-        <Toggle
-          label="Audio clean"
-          icon={Volume2}
-          checked={filters.audioClean}
-          onChange={(audioClean) => onChange({ ...filters, audioClean })}
-        />
-        <Toggle
-          label="Has transcript"
-          icon={FileText}
-          checked={filters.hasTranscript}
-          onChange={(hasTranscript) => onChange({ ...filters, hasTranscript })}
-        />
-        <Toggle
-          label="Only exportable clips"
-          icon={CheckCircle2}
-          checked={filters.exportableOnly}
-          onChange={(exportableOnly) => onChange({ ...filters, exportableOnly })}
+        <OptionGroup
+          label="Transcript"
+          value={filters.transcript}
+          options={transcriptOptions}
+          onSelect={(transcript) => onChange({ ...filters, transcript })}
         />
       </div>
     </div>
@@ -168,39 +138,5 @@ function OptionGroup<T extends string>({
       </div>
       {helper ? <p className="text-[11px] text-zinc-600">{helper}</p> : null}
     </div>
-  );
-}
-
-function Toggle({
-  label,
-  icon: Icon,
-  checked,
-  onChange,
-}: {
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "flex h-10 items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 text-sm text-zinc-400 transition",
-        checked && "border-emerald-300/35 bg-emerald-300/10 text-emerald-100",
-      )}
-    >
-      <span className="inline-flex min-w-0 items-center gap-2">
-        <Icon className="h-4 w-4 shrink-0" />
-        <span className="truncate">{label}</span>
-      </span>
-      <span
-        className={cn(
-          "h-4 w-4 shrink-0 rounded border border-white/20",
-          checked && "border-emerald-200 bg-emerald-200",
-        )}
-      />
-    </button>
   );
 }

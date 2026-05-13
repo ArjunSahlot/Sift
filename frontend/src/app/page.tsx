@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Archive,
   Database,
   Download,
   FileVideo,
@@ -24,7 +23,7 @@ import {
 import { VideoCard } from "@/components/VideoCard";
 import { YouTubeInput } from "@/components/YouTubeInput";
 import { createExport, getPublicVideos, searchClips, uploadVideo, uploadYouTube } from "@/lib/api";
-import type { ClipItem, ClipQuality, Mode, QueryFilters, VideoItem } from "@/lib/types";
+import type { ClipItem, Mode, QueryFilters, VideoItem } from "@/lib/types";
 import { cn, formatDuration } from "@/lib/utils";
 
 const processingStages = [
@@ -41,11 +40,7 @@ const initialFilters: QueryFilters = {
   speaker: "any",
   faceAxis: "any",
   speech: "any",
-  embedding: "any",
-  faceVisible: false,
-  audioClean: false,
-  hasTranscript: false,
-  exportableOnly: false,
+  transcript: "any",
 };
 
 export default function Home() {
@@ -57,7 +52,7 @@ export default function Home() {
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadError, setUploadError] = useState("");
   const [youtubeNotice, setYoutubeNotice] = useState("");
-  const [query, setQuery] = useState("whiteboard");
+  const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<QueryFilters>(initialFilters);
   const [results, setResults] = useState<ClipItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -130,13 +125,11 @@ export default function Home() {
 
   const publicStats = useMemo(() => {
     const completeVideos = videos.filter((video) => video.status === "complete");
-    const clips = videos.reduce((total, video) => total + (video.clipsFound ?? 0), 0);
-    const good = videos.reduce((total, video) => total + (video.goodClips ?? 0), 0);
+    const clips = completeVideos.reduce((total, video) => total + (video.clipsFound ?? 0), 0);
 
     return {
       completeVideos: completeVideos.length,
       clips,
-      good,
       duration: completeVideos.reduce(
         (total, video) => total + (video.durationSeconds ?? 0),
         0,
@@ -158,9 +151,6 @@ export default function Home() {
       durationSeconds: 0,
       fileSizeMb: file.size / 1024 / 1024,
       clipsFound: 0,
-      goodClips: 0,
-      reviewClips: 0,
-      rejectedClips: 0,
       createdAt: new Date().toISOString(),
     };
 
@@ -202,9 +192,6 @@ export default function Home() {
       durationSeconds: 0,
       fileSizeMb: 0,
       clipsFound: 0,
-      goodClips: 0,
-      reviewClips: 0,
-      rejectedClips: 0,
       createdAt: new Date().toISOString(),
     };
 
@@ -266,7 +253,7 @@ export default function Home() {
               Upload. Extract. Search.
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-zinc-400 md:text-lg">
-              Turn raw videos into searchable, quality-filtered human-speaking clips.
+              Turn raw videos into searchable human-speaking clips with transcripts and scores.
             </p>
           </div>
           <ModeToggle mode={mode} onModeChange={setMode} />
@@ -278,7 +265,7 @@ export default function Home() {
           </p>
         ) : null}
 
-        <section className="grid gap-3 py-6 md:grid-cols-4">
+        <section className="grid gap-3 py-6 md:grid-cols-3">
           <Stat
             icon={FileVideo}
             label="Processed videos"
@@ -288,11 +275,6 @@ export default function Home() {
             icon={Database}
             label="Extracted clips"
             value={publicStats.clips.toString()}
-          />
-          <Stat
-            icon={Archive}
-            label="Good clips"
-            value={publicStats.good.toString()}
           />
           <Stat
             icon={UploadCloud}
@@ -463,7 +445,7 @@ function QueryMode({
               Search the clip dataset
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-              Find clips by transcript, quality, visual concepts, and speaking conditions.
+              Find clips by transcript, semantic similarity, and speaking conditions.
             </p>
           </div>
           {results.length ? (

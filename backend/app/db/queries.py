@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 from sqlite3 import Row
 from typing import Any
 
-from app.db.models import CLIP_QUALITIES, PROGRESS_PERCENT
+from app.db.models import PROGRESS_PERCENT
 from app.db.session import connect, get_connection
 from app.utils.files import media_url, remove_path, remove_video_files
 from app.utils.time import utc_now
@@ -290,67 +289,26 @@ def get_clip(clip_id: str) -> dict[str, Any] | None:
         return _row_to_dict(row)
 
 
-def get_clips_for_video(video_id: str, quality: str = "all") -> list[dict[str, Any]]:
-    params: list[Any] = [video_id]
-    where = "clips.video_id = ?"
-    if quality != "all":
-        where += " AND clips.quality = ?"
-        params.append(quality)
-
+def get_clips_for_video(video_id: str) -> list[dict[str, Any]]:
     with get_connection() as connection:
         rows = connection.execute(
-            f"""
+            """
             SELECT clips.*, videos.title AS source_video_title
             FROM clips
             JOIN videos ON videos.id = clips.video_id
-            WHERE {where}
+            WHERE clips.video_id = ?
             ORDER BY clips.start_time ASC
             """,
-            params,
+            (video_id,),
         ).fetchall()
         return [dict(row) for row in rows]
-
-
-def update_clip_quality(clip_id: str, quality: str) -> dict[str, Any] | None:
-    if quality not in CLIP_QUALITIES:
-        raise ValueError("Invalid clip quality.")
-    now = utc_now()
-    with get_connection() as connection:
-        row = connection.execute(
-            "SELECT video_id FROM clips WHERE id = ?", (clip_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        connection.execute(
-            """
-            UPDATE clips
-            SET quality = ?,
-                exportable = ?,
-                rejection_reasons_json = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                quality,
-                0 if quality == "rejected" else 1,
-                '["manual_reviewer_rejected_clip"]' if quality == "rejected" else "[]",
-                now,
-                clip_id,
-            ),
-        )
-    refresh_video_counts(row["video_id"])
-    return get_clip(clip_id)
 
 
 def refresh_video_counts(video_id: str) -> None:
     with get_connection() as connection:
         counts = connection.execute(
             """
-            SELECT
-              COUNT(*) AS total,
-              SUM(CASE WHEN quality = 'good' THEN 1 ELSE 0 END) AS good,
-              SUM(CASE WHEN quality = 'review' THEN 1 ELSE 0 END) AS review,
-              SUM(CASE WHEN quality = 'rejected' THEN 1 ELSE 0 END) AS rejected
+            SELECT COUNT(*) AS total
             FROM clips
             WHERE video_id = ?
             """,
@@ -366,12 +324,18 @@ def refresh_video_counts(video_id: str) -> None:
         )
 
 
+def _clip_has_transcript(clip: dict[str, Any]) -> bool:
+    text = clip.get("transcript")
+    return bool(text and str(text).strip())
+
+
 def search_clips(
     query: str = "",
     duration: str = "any",
     speaker: str = "any",
     face_axis: str = "any",
     speech: str = "any",
+    transcript: str = "any",
     semantic_clip_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     duration = {
@@ -422,6 +386,11 @@ def search_clips(
         if speech == "detected" and not bool(clip.get("has_speech")):
             continue
         if speech == "none" and bool(clip.get("has_speech")):
+            continue
+        transcript_mode = (transcript or "any").lower()
+        if transcript_mode == "has" and not _clip_has_transcript(clip):
+            continue
+        if transcript_mode == "none" and _clip_has_transcript(clip):
             continue
         if semantic_clip_ids is not None and clip["id"] not in semantic_clip_ids:
             continue
@@ -571,9 +540,6 @@ def video_response(row: dict[str, Any]) -> dict[str, Any]:
         "resolution": f"{width}x{height}" if width and height else None,
         "fps": row.get("fps"),
         "clipsFound": counts["total"],
-        "goodClips": counts["good"],
-        "reviewClips": counts["review"],
-        "rejectedClips": counts["rejected"],
         "error": job.get("error") if job else None,
         "createdAt": row["created_at"],
     }
@@ -582,7 +548,6 @@ def video_response(row: dict[str, Any]) -> dict[str, Any]:
 def video_detail_response(row: dict[str, Any]) -> dict[str, Any]:
     response = video_response(row)
     response["processingTimeSeconds"] = _processing_time_seconds(row["id"])
-    response["mostCommonRejectionReason"] = _most_common_rejection_reason(row["id"])
     return response
 
 
@@ -611,7 +576,6 @@ def clip_response(row: dict[str, Any]) -> dict[str, Any]:
         "startTime": row["start_time"],
         "endTime": row["end_time"],
         "duration": row["duration"],
-        "quality": row["quality"],
         "qualityScore": row["quality_score"],
         "speechScore": row["speech_score"],
         "faceScore": row["face_score"],
@@ -643,22 +607,13 @@ def _clip_counts(video_id: str) -> dict[str, int]:
     with get_connection() as connection:
         row = connection.execute(
             """
-            SELECT
-              COUNT(*) AS total,
-              SUM(CASE WHEN quality = 'good' THEN 1 ELSE 0 END) AS good,
-              SUM(CASE WHEN quality = 'review' THEN 1 ELSE 0 END) AS review,
-              SUM(CASE WHEN quality = 'rejected' THEN 1 ELSE 0 END) AS rejected
+            SELECT COUNT(*) AS total
             FROM clips
             WHERE video_id = ?
             """,
             (video_id,),
         ).fetchone()
-    return {
-        "total": int(row["total"] or 0),
-        "good": int(row["good"] or 0),
-        "review": int(row["review"] or 0),
-        "rejected": int(row["rejected"] or 0),
-    }
+    return {"total": int(row["total"] or 0)}
 
 
 def _latest_job(video_id: str) -> dict[str, Any] | None:
@@ -685,20 +640,6 @@ def _processing_time_seconds(video_id: str) -> int | None:
             (job["completed_at"], job["started_at"]),
         ).fetchone()
         return int(row["seconds"] or 0)
-
-
-def _most_common_rejection_reason(video_id: str) -> str | None:
-    with get_connection() as connection:
-        rows = connection.execute(
-            "SELECT rejection_reasons_json FROM clips WHERE video_id = ?",
-            (video_id,),
-        ).fetchall()
-    reasons: list[str] = []
-    for row in rows:
-        reasons.extend(_json_list(row["rejection_reasons_json"]))
-    if not reasons:
-        return None
-    return Counter(reasons).most_common(1)[0][0]
 
 
 def _json_list(value: str | None) -> list[str]:

@@ -396,11 +396,6 @@ function DebugClipPreview({ clip }: { clip: DebugMediaClip }) {
             <Play className="h-6 w-6 text-zinc-700" />
           </div>
         )}
-        {clip.quality ? (
-          <span className={cn("absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]", qualityChipClass(clip.quality))}>
-            {qualityLabel(clip.quality)}
-          </span>
-        ) : null}
       </div>
       <div className="space-y-3 p-3">
         <div className="flex items-center justify-between gap-3">
@@ -416,7 +411,8 @@ function DebugClipPreview({ clip }: { clip: DebugMediaClip }) {
         </div>
         {faceSamples.length ? <FaceSampleStrip samples={faceSamples} /> : null}
         {clip.rejectionReasons?.length ? (
-          <p className="text-xs text-rose-200">
+          <p className="text-xs text-zinc-500">
+            <span className="text-zinc-600">Pipeline notes: </span>
             {clip.rejectionReasons.join(", ")}
           </p>
         ) : null}
@@ -639,14 +635,9 @@ function QualityStageVisual({ clips }: { clips: DebugMediaClip[] }) {
         <div key={clip.id} className="rounded-md border border-white/10 bg-black/25 p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
             <span className="font-mono text-xs text-zinc-300">{clip.id}</span>
-            {clip.quality ? (
-              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]", qualityChipClass(clip.quality))}>
-                {qualityLabel(clip.quality)}
-              </span>
-            ) : null}
           </div>
           <div className="grid grid-cols-4 gap-2">
-            <MiniScore label="Quality" value={clip.qualityScore} />
+            <MiniScore label="Composite" value={clip.qualityScore} />
           <MiniScore label="Speech" value={clip.speechScore} />
           <MiniScore label="Face" value={clip.faceScore} />
           <MiniScore label="Audio" value={clip.audioScore} />
@@ -696,7 +687,7 @@ function EmbeddingStageVisual({ clips }: { clips: DebugMediaClip[] }) {
 }
 
 function TranscriptStageVisual({ clips }: { clips: DebugMediaClip[] }) {
-  const transcriptClips = clips.filter((clip) => clip.transcript || clip.quality);
+  const transcriptClips = clips.filter((clip) => clip.transcript);
 
   return (
     <div className="space-y-2">
@@ -706,7 +697,6 @@ function TranscriptStageVisual({ clips }: { clips: DebugMediaClip[] }) {
             <div className="mb-2 flex items-center gap-2 text-xs text-zinc-500">
               <Captions className="h-3.5 w-3.5" />
               <span className="font-mono text-zinc-300">{clip.id}</span>
-              <span>{qualityLabel(clip.quality)}</span>
             </div>
             <p className="text-sm text-zinc-300">
               {clip.transcript || "No transcript emitted for this clip."}
@@ -715,7 +705,7 @@ function TranscriptStageVisual({ clips }: { clips: DebugMediaClip[] }) {
         ))
       ) : (
         <p className="rounded-md border border-white/10 bg-white/[0.025] p-3 text-xs text-zinc-500">
-          Transcripts will show here for good and needs-review clips when ASR is enabled.
+          Transcripts appear here when ASR emits text for a clip.
         </p>
       )}
     </div>
@@ -875,24 +865,8 @@ function segmentClassName(segment: DebugTimelineSegment) {
   if (segment.kind === "clip") return "border-violet-300/40 bg-violet-300/25 text-violet-50";
   if (segment.kind === "face") return "border-amber-300/40 bg-amber-300/30 text-amber-50";
   if (segment.kind === "embedding") return "border-sky-300/40 bg-sky-300/25 text-sky-50";
-  if (segment.quality === "good") return "border-emerald-300/40 bg-emerald-300/30 text-emerald-50";
-  if (segment.quality === "review") return "border-yellow-300/40 bg-yellow-300/30 text-yellow-50";
-  if (segment.quality === "rejected") return "border-rose-300/40 bg-rose-300/30 text-rose-50";
+  if (segment.kind === "quality") return "border-zinc-400/40 bg-zinc-700/35 text-zinc-100";
   return "border-zinc-300/30 bg-zinc-300/20 text-zinc-100";
-}
-
-function qualityChipClass(quality?: string) {
-  if (quality === "good") return "bg-emerald-500/20 text-emerald-100";
-  if (quality === "review") return "bg-yellow-500/20 text-yellow-100";
-  if (quality === "rejected") return "bg-rose-500/20 text-rose-100";
-  return "bg-white/10 text-zinc-200";
-}
-
-function qualityLabel(quality?: string) {
-  if (quality === "good") return "Good";
-  if (quality === "review") return "Needs Review";
-  if (quality === "rejected") return "Rejected";
-  return quality ?? "Pending";
 }
 
 function speakerLabel(value?: string) {

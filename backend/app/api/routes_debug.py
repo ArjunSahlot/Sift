@@ -72,7 +72,7 @@ def get_video_debug(video_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Video not found.")
 
     job = _latest_job_for_video(video_id)
-    clips = queries.get_clips_for_video(video_id, "all")
+    clips = queries.get_clips_for_video(video_id)
     debug_payload = read_video_debug(video_id) or {}
     stored_stages = debug_payload.get("stages") if isinstance(debug_payload, dict) else {}
     if not isinstance(stored_stages, dict):

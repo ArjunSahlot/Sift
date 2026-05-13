@@ -2,7 +2,6 @@ from __future__ import annotations
 
 JOB_STATUSES = {"queued", "processing", "complete", "failed"}
 VIDEO_STATUSES = {"queued", "uploading", "processing", "complete", "failed"}
-CLIP_QUALITIES = {"good", "review", "rejected"}
 
 PROGRESS_PERCENT = {
     "queued": 0,

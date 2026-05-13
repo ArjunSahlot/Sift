@@ -1,6 +1,6 @@
 import type { VideoItem } from "@/lib/types";
 import { stageLabel } from "@/lib/utils";
-import { QualityBadge } from "./QualityBadge";
+import { StatusBadge } from "./StatusBadge";
 
 type ProcessingBadgeProps = {
   video: VideoItem;
@@ -9,7 +9,7 @@ type ProcessingBadgeProps = {
 export function ProcessingBadge({ video }: ProcessingBadgeProps) {
   return (
     <div className="flex items-center gap-2">
-      <QualityBadge status={video.status} />
+      <StatusBadge status={video.status} />
       {video.status === "processing" || video.status === "uploading" ? (
         <span className="truncate text-xs text-zinc-400">
           {stageLabel(video.progressStage)}

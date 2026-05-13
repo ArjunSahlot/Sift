@@ -5,7 +5,6 @@ import {
   Clock3,
   Download,
   FileArchive,
-  Gauge,
   Play,
   RefreshCw,
   Rows3,
@@ -18,31 +17,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { ExportModal, type ExportSettings } from "@/components/ExportModal";
 import { LoadingState } from "@/components/LoadingState";
 import { ProgressStage } from "@/components/ProgressStage";
-import { QualityBadge } from "@/components/QualityBadge";
-import {
-  createExport,
-  getVideo as fetchVideo,
-  getVideoClips,
-  updateClipQuality as patchClipQuality,
-  reprocessVideo,
-} from "@/lib/api";
-import type { ClipItem, ClipQuality, VideoItem } from "@/lib/types";
-import {
-  cn,
-  formatDate,
-  formatDuration,
-  formatFileSize,
-  formatScore,
-} from "@/lib/utils";
-
-type ClipTab = "good" | "review" | "rejected" | "all";
-
-const tabs: Array<{ id: ClipTab; label: string }> = [
-  { id: "good", label: "Good" },
-  { id: "review", label: "Needs Review" },
-  { id: "rejected", label: "Rejected" },
-  { id: "all", label: "All" },
-];
+import { StatusBadge } from "@/components/StatusBadge";
+import { createExport, getVideo as fetchVideo, getVideoClips, reprocessVideo } from "@/lib/api";
+import type { ClipItem, VideoItem } from "@/lib/types";
+import { formatDate, formatDuration, formatFileSize, formatScore } from "@/lib/utils";
 
 export default function VideoDetailPage() {
   const router = useRouter();
@@ -50,16 +28,14 @@ export default function VideoDetailPage() {
   const videoId = params.videoId;
   const [video, setVideo] = useState<VideoItem>();
   const [clips, setClips] = useState<ClipItem[]>([]);
-  const [activeTab, setActiveTab] = useState<ClipTab>("good");
   const [exportOpen, setExportOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [reviewError, setReviewError] = useState("");
 
   const loadVideo = useCallback(async () => {
     try {
       const nextVideo = await fetchVideo(videoId);
-      const nextClips = await getVideoClips(videoId, "all");
+      const nextClips = await getVideoClips(videoId);
       setVideo(nextVideo);
       setClips(nextClips);
       setError("");
@@ -91,56 +67,12 @@ export default function VideoDetailPage() {
   }, [loadVideo, video]);
 
   const summary = useMemo(() => summarize(video, clips), [clips, video]);
-  const visibleClips = useMemo(() => {
-    if (activeTab === "all") {
-      return clips;
-    }
-
-    return clips.filter((clip) => clip.quality === activeTab);
-  }, [activeTab, clips]);
-
-  async function updateClipQuality(clipId: string, quality: ClipQuality) {
-    const previousClips = clips;
-    setReviewError("");
-    setClips((currentClips) =>
-      currentClips.map((clip) =>
-        clip.id === clipId
-          ? {
-              ...clip,
-              quality,
-              exportable: quality !== "rejected",
-              rejectionReasons:
-                quality === "rejected"
-                  ? clip.rejectionReasons ?? ["manual_reviewer_rejected_clip"]
-                  : [],
-            }
-          : clip,
-      ),
-    );
-
-    try {
-      const updatedClip = await patchClipQuality(clipId, quality);
-      setClips((currentClips) =>
-        currentClips.map((clip) => (clip.id === clipId ? updatedClip : clip)),
-      );
-      const nextVideo = await fetchVideo(videoId);
-      setVideo(nextVideo);
-    } catch (caughtError) {
-      setClips(previousClips);
-      setReviewError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not update clip quality.",
-      );
-    }
-  }
 
   async function handleVideoExport(settings: ExportSettings) {
     return createExport({
       mode: "video",
       videoId,
-      filters: {
-      },
+      filters: {},
       ...settings.include,
       includeTranscripts: settings.metadata.transcript,
       includeQualityScores: settings.metadata.scores,
@@ -212,7 +144,7 @@ export default function VideoDetailPage() {
               <h1 className="text-3xl font-semibold tracking-tight text-white md:text-5xl">
                 {video.title}
               </h1>
-              <QualityBadge status={video.status} />
+              <StatusBadge status={video.status} />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-zinc-400">
               <span>{video.filename}</span>
@@ -224,11 +156,11 @@ export default function VideoDetailPage() {
             <button
               type="button"
               onClick={() => setExportOpen(true)}
-              disabled={!summary.good}
+              disabled={!summary.clipCount}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              Export Good Clips
+              Export clips
             </button>
             <button
               type="button"
@@ -242,9 +174,9 @@ export default function VideoDetailPage() {
           </div>
         </header>
 
-        {error || reviewError ? (
+        {error ? (
           <p className="rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
-            {reviewError || error}
+            {error}
           </p>
         ) : null}
 
@@ -260,24 +192,8 @@ export default function VideoDetailPage() {
                 Extracted clips
               </h2>
               <p className="mt-2 text-sm text-zinc-400">
-                Review quality-filtered clips, transcripts, scores, and rejection reasons.
+                Play extracted segments inline and open the full video when you need context.
               </p>
-            </div>
-            <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.035] p-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "h-9 rounded-md px-3 text-sm font-medium text-zinc-400 transition",
-                    activeTab === tab.id && "bg-white text-zinc-950",
-                    activeTab !== tab.id && "hover:bg-white/5 hover:text-zinc-100",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
             </div>
           </div>
 
@@ -288,27 +204,22 @@ export default function VideoDetailPage() {
               title="Processing failed."
               description={video.error ?? "No clips were extracted for this video."}
             />
-          ) : visibleClips.length ? (
+          ) : clips.length ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visibleClips.map((clip) => (
-                <ClipCard
-                  key={clip.id}
-                  clip={clip}
-                  reviewControls
-                  onQualityChange={updateClipQuality}
-                />
+              {clips.map((clip) => (
+                <ClipCard key={clip.id} clip={clip} currentVideoId={videoId} />
               ))}
             </div>
           ) : (
             <EmptyState
-              title="No clips in this tab."
-              description="Change tabs or review decisions to see more extracted clips."
+              title="No clips yet."
+              description="Processing did not produce segments for this video."
             />
           )}
         </section>
-        
+
         {process.env.NEXT_PUBLIC_ENABLE_DEBUG_ARTIFACTS === "true" && (
-          <DebugDropdown videoId={videoId} videoStatus={video.status}/>
+          <DebugDropdown videoId={videoId} videoStatus={video.status} />
         )}
       </div>
 
@@ -316,7 +227,7 @@ export default function VideoDetailPage() {
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         mode="video"
-        resultCount={summary.good}
+        resultCount={summary.clipCount}
         onGenerate={handleVideoExport}
       />
     </main>
@@ -377,21 +288,14 @@ function SummaryPanel({
         <h2 className="font-semibold text-zinc-100">Processing summary</h2>
       </div>
       <div className="mt-5 grid grid-cols-2 gap-3">
-        <SummaryMetric label="Candidate clips" value={summary.candidates.toString()} />
-        <SummaryMetric label="Good clips" value={summary.good.toString()} />
-        <SummaryMetric label="Needs review" value={summary.review.toString()} />
-        <SummaryMetric label="Rejected" value={summary.rejected.toString()} />
+        <SummaryMetric label="Clips" value={summary.clipCount.toString()} />
+        <SummaryMetric label="Clip duration" value={formatDuration(summary.totalClipDuration)} />
       </div>
       <div className="mt-4 space-y-3 rounded-lg border border-white/10 bg-white/[0.035] p-4">
         <SummaryLine
           icon={Clock3}
-          label="Accepted duration"
-          value={formatDuration(summary.acceptedDuration)}
-        />
-        <SummaryLine
-          icon={Gauge}
-          label="Top rejection"
-          value={summary.topRejectionReason}
+          label="Source duration"
+          value={formatDuration(video.durationSeconds)}
         />
         <SummaryLine
           icon={FileArchive}
@@ -408,10 +312,10 @@ function SummaryPanel({
       </div>
       <div className="mt-5 rounded-lg border border-white/10 bg-zinc-950/45 p-4">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-          Average quality score
+          Average composite score
         </p>
         <p className="mt-2 text-3xl font-semibold text-white">
-          {formatScore(summary.averageQuality)}
+          {formatScore(summary.averageCompositeScore)}
         </p>
       </div>
     </aside>
@@ -459,31 +363,27 @@ function SummaryLine({
 }
 
 function summarize(video: VideoItem | undefined, clips: ClipItem[]) {
-  const candidates = clips.length || video?.clipsFound || 0;
-  const good = clips.filter((clip) => clip.quality === "good").length || video?.goodClips || 0;
-  const review =
-    clips.filter((clip) => clip.quality === "review").length || video?.reviewClips || 0;
-  const rejected =
-    clips.filter((clip) => clip.quality === "rejected").length || video?.rejectedClips || 0;
-  const acceptedDuration = clips
-    .filter((clip) => clip.quality === "good")
-    .reduce((total, clip) => total + clip.duration, 0);
-  const rejectionReasons = clips.flatMap((clip) => clip.rejectionReasons ?? []);
-  const topRejectionReason =
-    rejectionReasons[0] ?? video?.mostCommonRejectionReason ?? "n/a";
-  const averageQuality =
-    clips.length > 0
-      ? clips.reduce((total, clip) => total + clip.qualityScore, 0) / clips.length
+  const derivedFromList =
+    clips.length > 0 || video?.status === "complete" || video?.status === "failed";
+
+  if (!derivedFromList) {
+    return {
+      clipCount: video?.clipsFound ?? 0,
+      totalClipDuration: 0,
+      averageCompositeScore: undefined,
+    };
+  }
+
+  const clipCount = clips.length;
+  const totalClipDuration = clips.reduce((total, clip) => total + clip.duration, 0);
+  const averageCompositeScore =
+    clipCount > 0
+      ? clips.reduce((total, clip) => total + clip.qualityScore, 0) / clipCount
       : undefined;
 
   return {
-    candidates,
-    good,
-    review,
-    rejected,
-    acceptedDuration,
-    topRejectionReason,
-    averageQuality,
+    clipCount,
+    totalClipDuration,
+    averageCompositeScore,
   };
 }
-

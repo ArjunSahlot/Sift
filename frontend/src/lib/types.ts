@@ -5,8 +5,6 @@ export type JobStatus =
   | "complete"
   | "failed";
 
-export type ClipQuality = "good" | "review" | "rejected";
-
 export type VideoItem = {
   id: string;
   title: string;
@@ -22,11 +20,7 @@ export type VideoItem = {
   resolution?: string;
   fps?: number;
   clipsFound?: number;
-  goodClips?: number;
-  reviewClips?: number;
-  rejectedClips?: number;
   processingTimeSeconds?: number;
-  mostCommonRejectionReason?: string;
   createdAt: string;
   error?: string;
 };
@@ -41,7 +35,6 @@ export type ClipItem = {
   startTime: number;
   endTime: number;
   duration: number;
-  quality: ClipQuality;
   qualityScore: number;
   speechScore?: number;
   faceScore?: number;
@@ -68,9 +61,6 @@ export type QueryFilters = {
   speaker: "any" | "0" | "1" | "2plus";
   faceAxis: "any" | "on-axis" | "off-axis" | "mixed";
   speech: "any" | "detected" | "none";
-  embedding: "any" | "ready" | "pending";
-  faceVisible: boolean;
-  audioClean: boolean;
-  hasTranscript: boolean;
-  exportableOnly: boolean;
+  /** Matches backend search; "has" / "none" filter on non-empty transcript text. */
+  transcript: "any" | "has" | "none";
 };

@@ -15,6 +15,7 @@ def search_clips(
     speaker: str = Query(default="any"),
     axis: str = Query(default="any"),
     speech: str = Query(default="any"),
+    transcript: str = Query(default="any"),
 ) -> list[dict]:
     semantic_matches = search_embeddings(q) if q.strip() else []
     semantic_by_id = {match["clipId"]: match for match in semantic_matches}
@@ -25,6 +26,7 @@ def search_clips(
         speaker=speaker,
         face_axis=axis,
         speech=speech,
+        transcript=transcript,
         semantic_clip_ids=semantic_clip_ids,
     )
     if semantic_matches:
