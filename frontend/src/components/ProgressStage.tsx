@@ -1,5 +1,5 @@
 import type { VideoItem } from "@/lib/types";
-import { cn, stageLabel } from "@/lib/utils";
+import { cn, formatDuration, stageLabel } from "@/lib/utils";
 
 type ProgressStageProps = {
   video: VideoItem;
@@ -13,6 +13,11 @@ export function ProgressStage({ video, compact = false }: ProgressStageProps) {
     return null;
   }
 
+  const remainingSeconds =
+    video.durationSeconds && video.status === "processing"
+      ? video.durationSeconds * ((100 - progress) / 100)
+      : null;
+
   return (
     <div className={cn("space-y-2", compact && "space-y-1.5")}>
       <div className="flex items-center justify-between gap-3 text-xs">
@@ -25,9 +30,17 @@ export function ProgressStage({ video, compact = false }: ProgressStageProps) {
           style={{ width: `${progress}%` }}
         />
       </div>
-      {typeof video.clipsFound === "number" ? (
-        <p className="text-xs text-zinc-500">{video.clipsFound} clips found so far</p>
-      ) : null}
+      <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+        {typeof video.clipsFound === "number" ? (
+          <p>{video.clipsFound} clips found so far</p>
+        ) : (
+          <span />
+        )}
+        {remainingSeconds !== null && (
+          <p>~{formatDuration(remainingSeconds)} remaining</p>
+        )}
+      </div>
     </div>
   );
 }
+
