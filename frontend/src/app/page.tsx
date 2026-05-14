@@ -466,7 +466,7 @@ function QueryMode({
           loading={searching}
         />
         <div className="mt-3 flex flex-wrap gap-2">
-          {["whiteboard", "startup pitch", "clean audio", "office interview"].map(
+          {["chess", "basketball", "movie", "youtube"].map(
             (example) => (
               <button
                 key={example}
